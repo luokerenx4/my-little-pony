@@ -44,11 +44,18 @@ import {
   type OpportunityLifecycleDeskProjection,
 } from "./opportunity-lifecycle-desk.js";
 import type { SemanticReviewDeskProjection } from "./semantic-review.js";
+import type { ProbabilityEstimationDeskProjection } from "./probability-estimation-agent.js";
+import type { ProbabilityEstimationSchedulerProjection } from "./probability-estimation-scheduler.js";
+import { AiUsageLedger, type AiUsageProjection } from "./ai-usage-ledger.js";
 import {
   buildSemanticReviewAdmissionProjection,
   type SemanticReviewAdmissionProjection,
 } from "./semantic-review-admission.js";
 import type { SemanticReviewSchedulerProjection } from "./semantic-review-scheduler.js";
+import type { PremiseAnalysisDeskProjection } from "./premise-analysis.js";
+import type { PremiseAnalysisSchedulerProjection } from "./premise-analysis-scheduler.js";
+import type { EvidenceAcquisitionSchedulerProjection } from "./evidence-acquisition-scheduler.js";
+import type { RuleEvidenceClaimSchedulerProjection } from "./rule-evidence-claim-scheduler.js";
 import { buildSemanticRelationGraph, type SemanticRelationGraphProjection } from "./semantic-relation-graph.js";
 import type { AnonymousSimulationMaterializerProjection } from "./anonymous-simulation-materializer.js";
 import { emptyReviewAttentionProjection, type ReviewAttentionProjection } from "./review-attention.js";
@@ -118,8 +125,15 @@ export function buildStudioProjection(input: {
   searchAttention?: SearchAttentionProjection;
   searchOutcomeAttribution?: SearchOutcomeAttributionProjection;
   semanticReview?: SemanticReviewDeskProjection;
+  probabilityEstimation?: ProbabilityEstimationDeskProjection;
+  probabilityEstimationScheduler?: ProbabilityEstimationSchedulerProjection;
+  aiUsage?: AiUsageProjection;
   semanticReviewAdmission?: SemanticReviewAdmissionProjection;
   semanticReviewScheduler?: SemanticReviewSchedulerProjection;
+  premiseAnalysis?: PremiseAnalysisDeskProjection;
+  premiseAnalysisScheduler?: PremiseAnalysisSchedulerProjection;
+  evidenceAcquisition?: EvidenceAcquisitionSchedulerProjection;
+  ruleEvidenceClaims?: RuleEvidenceClaimSchedulerProjection;
   reviewAttention?: ReviewAttentionProjection;
   proposalEconomicTriage?: ProposalEconomicTriageProjection;
   semanticRelationGraph?: SemanticRelationGraphProjection;
@@ -299,7 +313,7 @@ export function buildStudioProjection(input: {
   };
   const searchLeaseScheduler = input.searchLeaseScheduler ?? {
     schemaVersion: "pmh.search-lease-scheduler.v1" as const,
-    algorithmVersion: "pmh.ai-search-leases.v5" as const,
+    algorithmVersion: "pmh.ai-search-leases.v6" as const,
     enabled: false,
     configured: { fastLane: true, deepLane: false },
     status: "IDLE" as const,
@@ -366,9 +380,12 @@ export function buildStudioProjection(input: {
     status: "IDLE" as const,
     tickIntervalMs: null,
     concurrencyLimit: 3,
+    familyConcurrencyLimit: 1,
     activeCount: 0,
     issueCount: 0,
     enabledIssueCount: 0,
+    defaultManagedIssueCount: 0,
+    supersededIssueCount: 0,
     dueIssueCount: 0,
     unreadNotificationCount: 0,
     performance: {
@@ -411,6 +428,9 @@ export function buildStudioProjection(input: {
       degradedPassCount: 0,
       insufficientCoverageFailureCount: 0,
       omittedVenueCount: 0,
+      familyRetrievalLeaseCount: 0,
+      familyRetrievalNeighborhoodCount: 0,
+      familyRetrievalFallbackCount: 0,
       agentTraceLeaseCount: 0,
       agentRunCount: 0,
       agentStepCount: 0,
@@ -432,6 +452,7 @@ export function buildStudioProjection(input: {
       piEscalationRateBps: null,
       economicGatePositiveRateBps: null,
       byIssue: [],
+      byFamily: [],
     },
     issues: [],
     notifications: [],
@@ -556,6 +577,169 @@ export function buildStudioProjection(input: {
       liveExecutionEnabled: false as const,
     },
   };
+  const premiseAnalysis = input.premiseAnalysis ?? {
+    schemaVersion: "pmh.premise-analysis-desk.v1" as const,
+    configured: false,
+    model: "deepseek-v4-flash",
+    interpreterIdentity: hashCanonical({ default: "premise-analysis" }),
+    status: "NEEDS_KEY" as const,
+    activeCount: 0,
+    runCount: 0,
+    passCount: 0,
+    failedCount: 0,
+    exactEligibleCount: 0,
+    researchOnlyCount: 0,
+    concurrencyLimit: 3,
+    records: [],
+    storage: {
+      mode: "MEMORY" as const,
+      durable: false,
+      schemaVersion: 0,
+      idempotencyKey: "analysisId" as const,
+    },
+    authority: "PROPOSE_ONLY" as const,
+    semanticDecisionAuthority: false as const,
+    certificateAuthority: false as const,
+    executionAuthority: false as const,
+    effects: {
+      externalWrites: false as const,
+      valueMovingActions: false as const,
+      liveExecutionEnabled: false as const,
+    },
+  };
+  const premiseAnalysisScheduler = input.premiseAnalysisScheduler ?? {
+    schemaVersion: "pmh.premise-analysis-scheduler.v2" as const,
+    enabled: false,
+    configured: false,
+    status: "NEEDS_KEY" as const,
+    tickIntervalMs: null,
+    concurrencyLimit: 3,
+    activeCount: 0,
+    dueCount: 0,
+    pendingCount: 0,
+    leasedCount: 0,
+    retryWaitCount: 0,
+    passedCount: 0,
+    exhaustedCount: 0,
+    exactEligibleCount: 0,
+    researchOnlyCount: 0,
+    attributedJobCount: 0,
+    legacyAttributionDebtCount: 0,
+    unreadNotificationCount: 0,
+    budget: {
+      basis: "PROVIDER_ATTEMPTS" as const,
+      maxAttemptsPerJob: 3,
+      maxRequestsPerTick: 3,
+      providerAttemptsStarted: 0,
+    },
+    jobs: [],
+    notifications: [],
+    storage: {
+      mode: "MEMORY" as const,
+      durable: false,
+      schemaVersion: 0,
+      idempotencyKey: "jobId" as const,
+    },
+    notificationStorage: {
+      mode: "MEMORY" as const,
+      durable: false,
+      schemaVersion: 0,
+      idempotencyKey: "notificationId" as const,
+    },
+    authority: "ADVISORY_PREMISE_ANALYSIS_ORCHESTRATION_ONLY" as const,
+    semanticDecisionAuthority: false as const,
+    certificateAuthority: false as const,
+    executionAuthority: false as const,
+    effects: {
+      externalWrites: false as const,
+      valueMovingActions: false as const,
+      liveExecutionEnabled: false as const,
+    },
+  };
+  const evidenceAcquisition = input.evidenceAcquisition ?? {
+    schemaVersion: "pmh.evidence-acquisition-scheduler.v1" as const,
+    enabled: false,
+    status: "IDLE" as const,
+    tickIntervalMs: null,
+    concurrencyLimit: 3,
+    activeCount: 0,
+    dueCount: 0,
+    pendingCount: 0,
+    leasedCount: 0,
+    retryWaitCount: 0,
+    capturedCount: 0,
+    staleCount: 0,
+    unsupportedCount: 0,
+    exhaustedCount: 0,
+    requirementCount: 0,
+    coalescedRequirementCount: 0,
+    conditionalReuseCount: 0,
+    budget: {
+      basis: "FETCH_ATTEMPTS" as const,
+      maxAttemptsPerJob: 3,
+      maxRequestsPerTick: 3,
+      fetchAttemptsStarted: 0,
+    },
+    jobs: [],
+    storage: {
+      jobs: { mode: "MEMORY" as const, durable: false, schemaVersion: 0, idempotencyKey: "jobId" as const },
+      documents: { mode: "MEMORY" as const, durable: false, schemaVersion: 0, idempotencyKey: "documentId" as const },
+      text: { mode: "MEMORY" as const, durable: false, schemaVersion: 0, idempotencyKey: "extractionId" as const },
+      observations: { mode: "MEMORY" as const, durable: false, schemaVersion: 0, idempotencyKey: "observationId" as const },
+    },
+    authority: "ANONYMOUS_EVIDENCE_ORCHESTRATION_ONLY" as const,
+    semanticDecisionAuthority: false as const,
+    certificateAuthority: false as const,
+    executionAuthority: false as const,
+    effects: {
+      externalWrites: false as const,
+      anonymousReadsOnly: true as const,
+      credentialsUsed: false as const,
+      providerRequests: false as const,
+      valueMovingActions: false as const,
+      liveExecutionEnabled: false as const,
+    },
+  };
+  const ruleEvidenceClaims = input.ruleEvidenceClaims ?? {
+    schemaVersion: "pmh.rule-evidence-claim-scheduler.v1" as const,
+    enabled: false,
+    configured: false,
+    status: "NEEDS_KEY" as const,
+    tickIntervalMs: null,
+    concurrencyLimit: 3,
+    activeCount: 0,
+    dueCount: 0,
+    pendingCount: 0,
+    leasedCount: 0,
+    retryWaitCount: 0,
+    passedCount: 0,
+    exhaustedCount: 0,
+    supportedCount: 0,
+    contradictedCount: 0,
+    inconclusiveCount: 0,
+    budget: {
+      basis: "PROVIDER_ATTEMPTS" as const,
+      maxAttemptsPerJob: 3,
+      maxRequestsPerTick: 3,
+      providerAttemptsStarted: 0,
+    },
+    jobs: [],
+    storage: {
+      mode: "MEMORY" as const,
+      durable: false,
+      schemaVersion: 0,
+      idempotencyKey: "jobId" as const,
+    },
+    authority: "ADVISORY_EVIDENCE_INTERPRETATION_ORCHESTRATION_ONLY" as const,
+    semanticDecisionAuthority: false as const,
+    certificateAuthority: false as const,
+    executionAuthority: false as const,
+    effects: {
+      externalWrites: false as const,
+      valueMovingActions: false as const,
+      liveExecutionEnabled: false as const,
+    },
+  };
   const semanticRelationGraph = input.semanticRelationGraph ?? buildSemanticRelationGraph({
     corpus: {
       ...marketCorpus,
@@ -586,6 +770,89 @@ export function buildStudioProjection(input: {
       effects: { externalWrites: false, valueMovingActions: false, liveExecutionEnabled: false },
     },
   });
+  const probabilityEstimation = input.probabilityEstimation ?? {
+    schemaVersion: "pmh.probability-estimation-desk.v1" as const,
+    configured: false,
+    model: "unavailable",
+    status: "NEEDS_KEY" as const,
+    activeCount: 0,
+    runCount: 0,
+    passCount: 0,
+    abstainedCount: 0,
+    failedCount: 0,
+    roles: Object.freeze(["REFERENCE_CLASS", "CAUSAL", "INDEPENDENT"] as const),
+    records: Object.freeze([]),
+    storage: Object.freeze({
+      mode: "MEMORY" as const,
+      durable: false,
+      schemaVersion: 0,
+      idempotencyKey: "runId" as const,
+    }),
+    authority: "ESTIMATION_ORCHESTRATION_ONLY" as const,
+    semanticDecisionAuthority: false as const,
+    certificateAuthority: false as const,
+    executionAuthority: false as const,
+    effects: Object.freeze({
+      externalWrites: false as const,
+      valueMovingActions: false as const,
+      liveExecutionEnabled: false as const,
+    }),
+  };
+  const probabilityEstimationScheduler = input.probabilityEstimationScheduler ?? {
+    schemaVersion: "pmh.probability-estimation-scheduler.v1" as const,
+    enabled: false,
+    configured: false,
+    status: "NEEDS_KEY" as const,
+    tickIntervalMs: null,
+    concurrencyLimit: 3,
+    activeCount: 0,
+    dueCount: 0,
+    pendingCount: 0,
+    leasedCount: 0,
+    retryWaitCount: 0,
+    blockedEvidenceCount: 0,
+    passedCount: 0,
+    abstainedCount: 0,
+    exhaustedCount: 0,
+    caseCount: 0,
+    boundReadyCount: 0,
+    freshBoundCount: 0,
+    unsupportedCandidateCount: 0,
+    unreadNotificationCount: 0,
+    budget: Object.freeze({
+      basis: "PROVIDER_ATTEMPTS" as const,
+      maxAttemptsPerRole: 3,
+      maxRequestsPerTick: 3,
+      providerAttemptsStarted: 0,
+    }),
+    jobs: Object.freeze([]),
+    bounds: Object.freeze([]),
+    notifications: Object.freeze([]),
+    storage: Object.freeze({
+      jobs: Object.freeze({
+        mode: "MEMORY" as const,
+        durable: false,
+        schemaVersion: 0,
+        idempotencyKey: "jobId" as const,
+      }),
+      notifications: Object.freeze({
+        mode: "MEMORY" as const,
+        durable: false,
+        schemaVersion: 0,
+        idempotencyKey: "notificationId" as const,
+      }),
+    }),
+    authority: "ESTIMATION_ORCHESTRATION_ONLY" as const,
+    semanticDecisionAuthority: false as const,
+    probabilityCertificateAuthority: false as const,
+    hardArbitrageAuthority: false as const,
+    executionAuthority: false as const,
+    effects: Object.freeze({
+      externalWrites: false as const,
+      valueMovingActions: false as const,
+      liveExecutionEnabled: false as const,
+    }),
+  };
   const investigationDesk = input.investigationDesk ?? {
     retentionLimit: 10,
     activeCount: 0 as const,
@@ -687,7 +954,7 @@ export function buildStudioProjection(input: {
             capability.implemented,
         ),
       ).length,
-      proofTests: 340,
+      proofTests: 345,
       liveExecutionEnabled: false as const,
       controlPlaneConnected: true as const,
     },
@@ -786,9 +1053,16 @@ export function buildStudioProjection(input: {
       searchIssueScheduler,
       searchOutcomeAttribution,
       semanticReview,
+      probabilityEstimation,
+      probabilityEstimationScheduler,
+      aiUsage: input.aiUsage ?? new AiUsageLedger().projection(),
       semanticReviewAdmission: input.semanticReviewAdmission ??
         buildSemanticReviewAdmissionProjection([]),
       semanticReviewScheduler,
+      premiseAnalysis,
+      premiseAnalysisScheduler,
+      evidenceAcquisition,
+      ruleEvidenceClaims,
       reviewAttention: input.reviewAttention ?? emptyReviewAttentionProjection(),
       proposalEconomicTriage: input.proposalEconomicTriage ?? emptyProposalEconomicTriage(),
       semanticRelationGraph,
@@ -939,13 +1213,25 @@ export function buildStudioProjection(input: {
       height: 80,
     })),
   };
+  const stateHash = hashCanonical(state);
+  const projectionWindow = Object.freeze({
+    schemaVersion: "pmh.studio-projection-window.v1" as const,
+    mode: "FULL" as const,
+    sourceStateHash: stateHash,
+    collections: Object.freeze([]),
+    authority: "PRESENTATION_WINDOW_ONLY" as const,
+    historyDeleted: false as const,
+  });
+  const viewState = Object.freeze({ projectionWindow, ...state });
   return Object.freeze({
     identity: {
-      schemaVersion: "pmh.studio-projection.v1" as const,
+      schemaVersion: "pmh.studio-projection.v2" as const,
       campaign: "architecture-qualification",
       mode: "CONTROL_PLANE" as const,
-      stateHash: hashCanonical(state),
+      view: "FULL" as const,
+      stateHash,
+      viewHash: hashCanonical(viewState),
     },
-    ...state,
+    ...viewState,
   });
 }

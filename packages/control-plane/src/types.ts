@@ -311,10 +311,31 @@ export type BookDeskProjection = Readonly<{
 
 export type StudioProjection = Readonly<{
   identity: Readonly<{
-    schemaVersion: "pmh.studio-projection.v1";
+    schemaVersion: "pmh.studio-projection.v2";
     campaign: string;
     mode: "CONTROL_PLANE";
+    view: "FULL" | "LIVE_BOUNDED";
     stateHash: string;
+    viewHash: string;
+  }>;
+  projectionWindow: Readonly<{
+    schemaVersion: "pmh.studio-projection-window.v1";
+    mode: "FULL" | "LIVE_BOUNDED";
+    sourceStateHash: string;
+    collections: readonly Readonly<{
+      path: string;
+      totalCount: number;
+      includedCount: number;
+      limit: number;
+      selection:
+        | "ACTIVE_THEN_RETAINED_ORDER"
+        | "RETAINED_ORDER"
+        | "OMITTED_FROM_LIVE_VIEW"
+        | "LINKED_TO_INCLUDED_CASES";
+      fullResource: "/api/v1/projection?view=full";
+    }>[];
+    authority: "PRESENTATION_WINDOW_ONLY";
+    historyDeleted: false;
   }>;
   system: Readonly<{
     lifecycle: "PRE_ALPHA";
@@ -341,8 +362,15 @@ export type StudioProjection = Readonly<{
     searchIssueScheduler: import("./search-issue-scheduler.js").SearchIssueSchedulerProjection;
     searchOutcomeAttribution: import("./search-outcome-attribution.js").SearchOutcomeAttributionProjection;
     semanticReview: import("./semantic-review.js").SemanticReviewDeskProjection;
+    probabilityEstimation: import("./probability-estimation-agent.js").ProbabilityEstimationDeskProjection;
+    probabilityEstimationScheduler: import("./probability-estimation-scheduler.js").ProbabilityEstimationSchedulerProjection;
+    aiUsage: import("./ai-usage-ledger.js").AiUsageProjection;
     semanticReviewAdmission: import("./semantic-review-admission.js").SemanticReviewAdmissionProjection;
     semanticReviewScheduler: import("./semantic-review-scheduler.js").SemanticReviewSchedulerProjection;
+    premiseAnalysis: import("./premise-analysis.js").PremiseAnalysisDeskProjection;
+    premiseAnalysisScheduler: import("./premise-analysis-scheduler.js").PremiseAnalysisSchedulerProjection;
+    evidenceAcquisition: import("./evidence-acquisition-scheduler.js").EvidenceAcquisitionSchedulerProjection;
+    ruleEvidenceClaims: import("./rule-evidence-claim-scheduler.js").RuleEvidenceClaimSchedulerProjection;
     reviewAttention: import("./review-attention.js").ReviewAttentionProjection;
     proposalEconomicTriage: import("./proposal-economic-triage.js").ProposalEconomicTriageProjection;
     semanticRelationGraph: import("./semantic-relation-graph.js").SemanticRelationGraphProjection;

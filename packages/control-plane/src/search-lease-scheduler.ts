@@ -9,6 +9,7 @@ import {
   calculateTwoListingIndicativeEconomics,
   type CanonicalIndicativeEconomics,
 } from "./indicative-relation-economics.js";
+import { buildExactDiscoveryCatalogContext } from "./catalog-discovery.js";
 import {
   assertMarketCorpusSnapshot,
   type MarketCorpusSnapshot,
@@ -35,6 +36,15 @@ import {
   MODEL_FAILURE_CATEGORIES,
   type ModelFailureCategory,
 } from "./model-failure.js";
+import {
+  assertSemanticFamilyRetrievalPlan,
+  semanticFamilyRetrievalBrief,
+  type SemanticFamilyRetrievalPlan,
+} from "./semantic-family-retrieval.js";
+import {
+  isSearchSemanticFamily,
+  type SearchSemanticFamily,
+} from "./search-semantic-family.js";
 
 const SEARCH_LEASE_ALGORITHM_VERSIONS = Object.freeze([
   "pmh.ai-search-leases.v1",
@@ -42,8 +52,9 @@ const SEARCH_LEASE_ALGORITHM_VERSIONS = Object.freeze([
   "pmh.ai-search-leases.v3",
   "pmh.ai-search-leases.v4",
   "pmh.ai-search-leases.v5",
+  "pmh.ai-search-leases.v6",
 ] as const);
-const ALGORITHM_VERSION = "pmh.ai-search-leases.v5" as const;
+const ALGORITHM_VERSION = "pmh.ai-search-leases.v6" as const;
 const DEFAULT_RETENTION_LIMIT = 40;
 const DEFAULT_FAST_DEADLINE_MS = 300_000;
 const DEFAULT_DEEP_DEADLINE_MS = 300_000;
@@ -52,6 +63,11 @@ const DEFAULT_MAX_DEEP_ATTEMPTS = 3;
 const HASH_PATTERN = /^sha256:[0-9a-f]{64}$/u;
 const INTEGER_PATTERN = /^-?(?:0|[1-9]\d*)$/u;
 const READ_ONLY_TOOLS = Object.freeze(["read", "grep", "find", "ls"] as const);
+
+function hasStagedLaneContractVersion(version: SearchLeaseAlgorithmVersion): boolean {
+  return version === "pmh.ai-search-leases.v5" ||
+    version === "pmh.ai-search-leases.v6";
+}
 
 export const SEARCH_LENSES = Object.freeze([
   "EQUIVALENCE",
@@ -66,11 +82,80 @@ export type SearchLeaseAlgorithmVersion =
 
 export type SearchCandidatePolicy = Readonly<{
   allowedRelationKinds: readonly MarketRelationKind[];
-  exactListingRefCount: number;
+  exactListingRefCount?: number;
+  minimumListingRefCount?: number;
+  maximumListingRefCount?: number;
+  maxCorpusListings?: number;
   requirePositiveGrossHint?: boolean;
   candidateSelection?: "EXACT_CONTEXT" | "MODEL_HYPOTHESIS";
   requireDistinctVenues?: boolean;
 }>;
+
+function candidatePolicyListingBounds(
+  policy: SearchCandidatePolicy,
+): Readonly<{ minimum: number; maximum: number }> {
+  if (policy.exactListingRefCount !== undefined) {
+    return Object.freeze({
+      minimum: policy.exactListingRefCount,
+      maximum: policy.exactListingRefCount,
+    });
+  }
+  return Object.freeze({
+    minimum: policy.minimumListingRefCount ?? 2,
+    maximum: policy.maximumListingRefCount ?? 4,
+  });
+}
+
+function candidatePolicyListingCountMatches(
+  policy: SearchCandidatePolicy,
+  count: number,
+): boolean {
+  const bounds = candidatePolicyListingBounds(policy);
+  return count >= bounds.minimum && count <= bounds.maximum;
+}
+
+export function isSearchCandidatePolicy(value: unknown): value is SearchCandidatePolicy {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const policy = value as SearchCandidatePolicy;
+  const exact = policy.exactListingRefCount;
+  const minimum = policy.minimumListingRefCount;
+  const maximum = policy.maximumListingRefCount;
+  const rangeValid = exact === undefined
+    ? Number.isSafeInteger(minimum) && Number.isSafeInteger(maximum) &&
+      minimum! >= 2 && maximum! <= 4 && minimum! <= maximum!
+    : Number.isSafeInteger(exact) && exact >= 2 && exact <= 8 &&
+      minimum === undefined && maximum === undefined;
+  return (
+    Array.isArray(policy.allowedRelationKinds) &&
+    policy.allowedRelationKinds.length > 0 &&
+    policy.allowedRelationKinds.length <= 8 &&
+    new Set(policy.allowedRelationKinds).size === policy.allowedRelationKinds.length &&
+    policy.allowedRelationKinds.every((kind) => [
+      "EQUIVALENT", "IMPLIES", "SUBSET", "MUTUALLY_EXCLUSIVE", "EXHAUSTIVE",
+      "CONDITIONAL", "RELATED", "CONFLICTING",
+    ].includes(kind)) &&
+    rangeValid &&
+    (policy.maxCorpusListings === undefined || (
+      Number.isSafeInteger(policy.maxCorpusListings) &&
+      policy.maxCorpusListings >= candidatePolicyListingBounds(policy).maximum &&
+      policy.maxCorpusListings <= 30
+    )) &&
+    (policy.requirePositiveGrossHint === undefined ||
+      typeof policy.requirePositiveGrossHint === "boolean") &&
+    (policy.candidateSelection === undefined ||
+      policy.candidateSelection === "EXACT_CONTEXT" ||
+      policy.candidateSelection === "MODEL_HYPOTHESIS") &&
+    (policy.requireDistinctVenues === undefined ||
+      typeof policy.requireDistinctVenues === "boolean") &&
+    (policy.requirePositiveGrossHint !== true || (
+      exact === 2 &&
+      policy.allowedRelationKinds.length === 1 &&
+      COMPILABLE_RELATIONS.includes(
+        policy.allowedRelationKinds[0] as CompilableRelation,
+      )
+    ))
+  );
+}
 
 export type SearchLeaseEconomicGate = Readonly<{
   required: boolean;
@@ -120,6 +205,7 @@ export type SearchLease = Readonly<{
   snapshotIdentity: Hash;
   sourceSetIdentity: Hash;
   issueId?: Hash | null;
+  semanticFamily?: SearchSemanticFamily | null;
   candidatePolicy?: SearchCandidatePolicy | null;
   lens: SearchLens;
   thesis: string;
@@ -162,6 +248,7 @@ export type SearchLeaseFastLane = Readonly<{
   providerTelemetry?: SearchLeaseProviderTelemetry;
   agentTelemetry?: SearchLeaseAgentTelemetry;
   corpusCoverage?: CatalogContextCoverage;
+  retrievalPlan?: SemanticFamilyRetrievalPlan;
   hypothesisIds: readonly string[];
   candidateListingRefs: readonly string[];
   semanticScope?: SearchScopeIdentity;
@@ -352,6 +439,10 @@ export type SearchLeaseContextFeedback = Readonly<{
   authority: "SEARCH_ROUTING_ONLY";
 }>;
 
+export type SearchLeaseContextSelection = CatalogContextSelection & Readonly<{
+  retrievalPlan?: SemanticFamilyRetrievalPlan;
+}>;
+
 type SearchLeaseOptions = Readonly<{
   intervalMs?: number | null;
   maxFastModelRequests?: number;
@@ -374,7 +465,8 @@ type SearchLeaseOptions = Readonly<{
     snapshot: MarketCorpusSnapshot,
     feedback: SearchLeaseContextFeedback,
     candidatePolicy: SearchCandidatePolicy | null,
-  ) => DiscoveryCatalogContext | CatalogContextSelection;
+    semanticFamily: SearchSemanticFamily | null,
+  ) => DiscoveryCatalogContext | SearchLeaseContextSelection;
   graphContext?: (
     snapshot: MarketCorpusSnapshot,
     lens: SearchLens,
@@ -398,6 +490,7 @@ export type SearchLeaseIssueInput = Readonly<{
   issueId: Hash;
   question: string;
   venueIds: readonly string[];
+  semanticFamily?: SearchSemanticFamily | null;
   candidatePolicy?: SearchCandidatePolicy | null;
 }>;
 
@@ -831,33 +924,25 @@ export function assertSearchLeaseRecord(value: unknown): SearchLeaseRecord {
     agentTelemetry.terminationReasons.reduce((sum, item) => sum + item.count, 0) ===
       agentTelemetry.agentRunCount
   );
-  const candidatePolicyValid = candidatePolicy === undefined || candidatePolicy === null || (
-    Array.isArray(candidatePolicy.allowedRelationKinds) &&
-    candidatePolicy.allowedRelationKinds.length > 0 &&
-    candidatePolicy.allowedRelationKinds.length <= 8 &&
-    new Set(candidatePolicy.allowedRelationKinds).size === candidatePolicy.allowedRelationKinds.length &&
-    candidatePolicy.allowedRelationKinds.every((kind) => [
-      "EQUIVALENT", "IMPLIES", "SUBSET", "MUTUALLY_EXCLUSIVE", "EXHAUSTIVE",
-      "CONDITIONAL", "RELATED", "CONFLICTING",
-    ].includes(kind)) &&
-    Number.isSafeInteger(candidatePolicy.exactListingRefCount) &&
-    candidatePolicy.exactListingRefCount >= 2 &&
-    candidatePolicy.exactListingRefCount <= 8 &&
-    (candidatePolicy.requirePositiveGrossHint === undefined ||
-      typeof candidatePolicy.requirePositiveGrossHint === "boolean") &&
-    (candidatePolicy.candidateSelection === undefined ||
-      candidatePolicy.candidateSelection === "EXACT_CONTEXT" ||
-      candidatePolicy.candidateSelection === "MODEL_HYPOTHESIS") &&
-    (candidatePolicy.requireDistinctVenues === undefined ||
-      typeof candidatePolicy.requireDistinctVenues === "boolean") &&
-    (candidatePolicy.requirePositiveGrossHint !== true ||
-      (candidatePolicy.exactListingRefCount === 2 &&
-        candidatePolicy.allowedRelationKinds.length === 1 &&
-        COMPILABLE_RELATIONS.includes(
-          candidatePolicy.allowedRelationKinds[0] as CompilableRelation,
-        )))
-  );
-  const isV5 = lease?.algorithmVersion === "pmh.ai-search-leases.v5";
+  const candidatePolicyValid = candidatePolicy === undefined || candidatePolicy === null ||
+    isSearchCandidatePolicy(candidatePolicy);
+  const hasStagedLaneContract = lease?.algorithmVersion === "pmh.ai-search-leases.v5" ||
+    lease?.algorithmVersion === "pmh.ai-search-leases.v6";
+  const semanticFamily = lease?.semanticFamily;
+  const semanticFamilyValid = semanticFamily === undefined || semanticFamily === null ||
+    isSearchSemanticFamily(semanticFamily);
+  const retrievalPlan = record.fastLane?.retrievalPlan;
+  let retrievalPlanValid = retrievalPlan === undefined;
+  if (retrievalPlan !== undefined) {
+    try {
+      const validated = assertSemanticFamilyRetrievalPlan(retrievalPlan);
+      retrievalPlanValid = semanticFamily !== undefined && semanticFamily !== null &&
+        validated.semanticFamily === semanticFamily &&
+        validated.corpusIdentity === lease.snapshotIdentity;
+    } catch {
+      retrievalPlanValid = false;
+    }
+  }
   const attempts: readonly SearchLeaseDeepAttempt[] =
     record.deepLane?.attempts ?? [];
   const deepInputIdentity = record.deepLane?.inputIdentity ?? null;
@@ -892,7 +977,7 @@ export function assertSearchLeaseRecord(value: unknown): SearchLeaseRecord {
         attempt.status === "FAILED") &&
       isIso(attempt.startedAt) && isIso(attempt.deadlineAt) &&
       Date.parse(attempt.deadlineAt) > Date.parse(attempt.startedAt) &&
-      (!isV5 || Date.parse(attempt.deadlineAt) - Date.parse(attempt.startedAt) ===
+      (!hasStagedLaneContract || Date.parse(attempt.deadlineAt) - Date.parse(attempt.startedAt) ===
         lease.budget.deepDeadlineMs) &&
       (attempt.completedAt === null ||
         (isIso(attempt.completedAt) &&
@@ -919,7 +1004,7 @@ export function assertSearchLeaseRecord(value: unknown): SearchLeaseRecord {
         : record.deepLane.status === "FAILED"
           ? "DEEP_UNAVAILABLE"
           : "DEEP_COMPLETE";
-  const v5StageValid = !isV5 || (
+  const stagedLaneValid = !hasStagedLaneContract || (
     record.outcome.stage === expectedStage &&
     isIso(record.fastLane.completedAt) === (record.fastLane.status !== "NOT_RUN") &&
     record.fastLane.completedAt === record.completedAt &&
@@ -969,9 +1054,11 @@ export function assertSearchLeaseRecord(value: unknown): SearchLeaseRecord {
     lease.executionAuthority !== false ||
     !graphContextValid ||
     !candidatePolicyValid ||
+    !semanticFamilyValid ||
     !providerTelemetryValid ||
     !agentTelemetryValid ||
-    !v5StageValid ||
+    !retrievalPlanValid ||
+    !stagedLaneValid ||
     !corpusCoverageValid(
       record.fastLane.corpusCoverage,
       lease.scope.venueIds,
@@ -988,7 +1075,7 @@ export function assertSearchLeaseRecord(value: unknown): SearchLeaseRecord {
     lease.budget.maxHypotheses < 1 || lease.budget.maxHypotheses > 20 ||
     !Number.isSafeInteger(lease.budget.deadlineMs) ||
     lease.budget.deadlineMs < 10_000 || lease.budget.deadlineMs > 1_200_000 ||
-    (isV5 && (
+    (hasStagedLaneContract && (
       !Number.isSafeInteger(lease.budget.fastDeadlineMs) ||
       lease.budget.fastDeadlineMs! < 10_000 || lease.budget.fastDeadlineMs! > 600_000 ||
       !Number.isSafeInteger(lease.budget.deepDeadlineMs) ||
@@ -1132,6 +1219,35 @@ function scopeFor(
   });
 }
 
+function boundCatalogContextForPolicy(
+  context: DiscoveryCatalogContext,
+  policy: SearchCandidatePolicy | null | undefined,
+): DiscoveryCatalogContext {
+  const maximum = policy?.maxCorpusListings;
+  if (maximum === undefined || context.listings.length <= maximum) return context;
+  const firstByVenue = new Set<string>();
+  const requiredRefs = new Set<string>();
+  for (const listing of context.listings) {
+    if (firstByVenue.has(listing.venueId)) continue;
+    firstByVenue.add(listing.venueId);
+    requiredRefs.add(listing.listingRef);
+  }
+  if (requiredRefs.size > maximum) {
+    throw new SearchLeaseUnavailableError(
+      "candidate corpus limit cannot retain one listing per represented venue",
+    );
+  }
+  const selectedRefs = new Set(requiredRefs);
+  for (const listing of context.listings) {
+    if (selectedRefs.size >= maximum) break;
+    selectedRefs.add(listing.listingRef);
+  }
+  return buildExactDiscoveryCatalogContext(
+    context.source,
+    context.listings.filter((listing) => selectedRefs.has(listing.listingRef)),
+  );
+}
+
 export class SearchLeaseBusyError extends Error {}
 export class SearchLeaseUnavailableError extends Error {}
 
@@ -1262,14 +1378,14 @@ export class SearchLeaseScheduler {
           ...record.fastLane,
           status: "FAILED",
           diagnostic,
-          ...(record.lease.algorithmVersion === "pmh.ai-search-leases.v5"
+          ...(hasStagedLaneContractVersion(record.lease.algorithmVersion)
             ? { completedAt }
             : {}),
         }),
         deepLane: this.#skippedDeep("PENDING_FAST_LANE"),
         outcome: Object.freeze({
           ...record.outcome,
-          ...(record.lease.algorithmVersion === "pmh.ai-search-leases.v5"
+          ...(hasStagedLaneContractVersion(record.lease.algorithmVersion)
             ? { stage: "FAST_FAILED" as const }
             : {}),
         }),
@@ -1299,7 +1415,7 @@ export class SearchLeaseScheduler {
           ...record.fastLane,
           status: "FAILED" as const,
           diagnostic,
-          ...(record.lease.algorithmVersion === "pmh.ai-search-leases.v5"
+          ...(hasStagedLaneContractVersion(record.lease.algorithmVersion)
             ? { completedAt }
             : {}),
         }),
@@ -1401,6 +1517,9 @@ export class SearchLeaseScheduler {
         snapshotIdentity: snapshot.snapshotIdentity,
         sourceSetIdentity: snapshot.sourceSetIdentity,
         issueId: issue?.issueId ?? null,
+        ...(issue?.semanticFamily === undefined
+          ? {}
+          : { semanticFamily: issue.semanticFamily }),
         ...(issue?.candidatePolicy === undefined
           ? {}
           : { candidatePolicy: issue.candidatePolicy }),
@@ -1510,6 +1629,7 @@ export class SearchLeaseScheduler {
     snapshot: MarketCorpusSnapshot,
     issued: SearchLeaseRecord,
   ): Promise<SearchLeaseRecord> {
+    let selectedRetrievalPlan: SemanticFamilyRetrievalPlan | undefined;
     try {
       const contextResult = this.#context(
         issued.trace.querySummary,
@@ -1518,16 +1638,30 @@ export class SearchLeaseScheduler {
         snapshot,
         this.#contextFeedback(issued),
         issued.lease.candidatePolicy ?? null,
+        issued.lease.semanticFamily ?? null,
       );
-      const context = "catalogContext" in contextResult
+      const unboundedContext = "catalogContext" in contextResult
         ? contextResult.catalogContext
         : contextResult;
+      const context = boundCatalogContextForPolicy(
+        unboundedContext,
+        issued.lease.candidatePolicy,
+      );
       const corpusCoverage = "catalogContext" in contextResult
         ? assertCatalogContextCoverage(
             contextResult.coverage,
             issued.lease.scope.venueIds,
           )
         : undefined;
+      selectedRetrievalPlan = "catalogContext" in contextResult
+        ? contextResult.retrievalPlan
+        : undefined;
+      if (
+        selectedRetrievalPlan !== undefined &&
+        selectedRetrievalPlan.selectedContextIdentity !== context.contextIdentity
+      ) {
+        throw new Error("semantic family retrieval plan does not bind the bounded context");
+      }
       if (corpusCoverage !== undefined) {
         const actualContextVenueIds = Object.freeze([
           ...new Set(context.listings.map((listing) => listing.venueId)),
@@ -1549,9 +1683,15 @@ export class SearchLeaseScheduler {
       const semanticScope = buildSearchScopeIdentity(context.listings);
       const taskVenueIds = corpusCoverage?.contextVenueIds ??
         issued.lease.scope.venueIds;
+      const retrievalBrief = selectedRetrievalPlan === undefined
+        ? ""
+        : semanticFamilyRetrievalBrief(selectedRetrievalPlan).slice(0, 220);
+      const taskQuestion = retrievalBrief === ""
+        ? issued.trace.querySummary
+        : `${issued.trace.querySummary.slice(0, 499 - retrievalBrief.length)} ${retrievalBrief}`;
       const task: DiscoveryTask = Object.freeze({
         taskId: issued.fastLane.taskId,
-        question: issued.trace.querySummary,
+        question: taskQuestion,
         venueIds: taskVenueIds,
         maxHypotheses: issued.lease.budget.maxHypotheses,
         deadlineEpochMs: Date.parse(issued.lease.issuedAt) +
@@ -1624,7 +1764,7 @@ export class SearchLeaseScheduler {
       );
       const meetsPolicyScope = (refs: readonly string[]) =>
         policy !== undefined && policy !== null &&
-        refs.length === policy.exactListingRefCount &&
+        candidatePolicyListingCountMatches(policy, refs.length) &&
         new Set(refs).size === refs.length &&
         refs.every((listingRef) => contextVenueByRef.has(listingRef)) &&
         (policy.requireDistinctVenues !== true ||
@@ -1728,6 +1868,9 @@ export class SearchLeaseScheduler {
         providerTelemetry,
         agentTelemetry,
         ...(corpusCoverage === undefined ? {} : { corpusCoverage }),
+        ...(selectedRetrievalPlan === undefined
+          ? {}
+          : { retrievalPlan: selectedRetrievalPlan }),
         hypothesisIds: Object.freeze(run.hypotheses.map((item) => item.hypothesisId)),
         candidateListingRefs: listingRefs,
         semanticScope,
@@ -1815,19 +1958,23 @@ export class SearchLeaseScheduler {
             issued.lease.scope.venueIds,
           )
         : issued.fastLane.corpusCoverage;
+      const completedAt = new Date(
+        Math.max(this.#now(), Date.parse(issued.lease.issuedAt)),
+      ).toISOString();
       return this.#persist(withArtifactHash({
         ...withoutArtifactHash(issued),
         status: "FAILED",
-        completedAt: new Date(Math.max(this.#now(), Date.parse(issued.lease.issuedAt))).toISOString(),
+        completedAt,
         diagnostic,
         fastLane: Object.freeze({
           ...issued.fastLane,
           ...(corpusCoverage === undefined ? {} : { corpusCoverage }),
+          ...(selectedRetrievalPlan === undefined
+            ? {}
+            : { retrievalPlan: selectedRetrievalPlan }),
           status: "FAILED",
           diagnostic,
-          completedAt: new Date(
-            Math.max(this.#now(), Date.parse(issued.lease.issuedAt)),
-          ).toISOString(),
+          completedAt,
         }),
         deepLane: this.#skippedDeep("PENDING_FAST_LANE"),
         outcome: Object.freeze({
@@ -2022,7 +2169,7 @@ export class SearchLeaseScheduler {
       : (result.proposalDetails ?? [])
         .filter((proposal) =>
           policy.allowedRelationKinds.includes(proposal.relationKind) &&
-          proposal.listingRefs.length === policy.exactListingRefCount &&
+          candidatePolicyListingCountMatches(policy, proposal.listingRefs.length) &&
           proposal.listingRefs.every((listingRef) => listingRefs.includes(listingRef))
         )
         .map((proposal) => proposal.proposalId)
@@ -2115,7 +2262,7 @@ export class SearchLeaseScheduler {
       throw new SearchLeaseUnavailableError("search lease deep stage is not retryable");
     }
     if (
-      record.lease.algorithmVersion !== "pmh.ai-search-leases.v5" ||
+      !hasStagedLaneContractVersion(record.lease.algorithmVersion) ||
       record.deepLane.inputIdentity === null ||
       record.deepLane.inputIdentity === undefined
     ) {

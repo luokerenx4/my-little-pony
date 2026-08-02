@@ -42,12 +42,63 @@ import {
   type SemanticReviewRecordStore,
 } from "./semantic-review.js";
 import {
+  assertPremiseAnalysisRecord,
+  type PremiseAnalysisRecord,
+  type PremiseAnalysisRecordStore,
+} from "./premise-analysis.js";
+import {
+  assertProbabilityEstimationRunRecord,
+  type ProbabilityEstimationRunRecord,
+  type ProbabilityEstimationRunStore,
+} from "./probability-estimation-agent.js";
+import {
+  assertProbabilityEstimationJobRecord,
+  assertProbabilityEstimationNotificationRecord,
+  type ProbabilityEstimationJobRecord,
+  type ProbabilityEstimationNotificationRecord,
+  type ProbabilityEstimationSchedulerStore,
+} from "./probability-estimation-scheduler.js";
+import {
+  assertPremiseAnalysisJobRecord,
+  assertPremiseAnalysisNotificationRecord,
+  type PremiseAnalysisJobRecord,
+  type PremiseAnalysisNotificationRecord,
+  type PremiseAnalysisSchedulerStore,
+} from "./premise-analysis-scheduler.js";
+import {
   assertSemanticReviewJobRecord,
   assertSemanticReviewNotificationRecord,
   type SemanticReviewJobRecord,
   type SemanticReviewNotificationRecord,
   type SemanticReviewSchedulerStore,
 } from "./semantic-review-scheduler.js";
+import {
+  assertEvidenceAcquisitionJobRecord,
+  type EvidenceAcquisitionJobRecord,
+  type EvidenceAcquisitionSchedulerStore,
+} from "./evidence-acquisition-scheduler.js";
+import {
+  assertEvidenceDocumentCapture,
+  assertEvidenceDocumentObservation,
+  assertStoredEvidenceDocument,
+  assertStoredEvidenceDocumentText,
+  type EvidenceDocumentCapture,
+  type EvidenceDocumentObservation,
+  type EvidenceDocumentRecord,
+  type EvidenceDocumentTextRecord,
+  type StoredEvidenceDocument,
+  type StoredEvidenceDocumentText,
+} from "./evidence-document.js";
+import {
+  assertRuleEvidenceClaimRecord,
+  type RuleEvidenceClaimRecord,
+  type RuleEvidenceClaimRecordStore,
+} from "./rule-evidence-claim.js";
+import {
+  assertRuleEvidenceClaimJobRecord,
+  type RuleEvidenceClaimJobRecord,
+  type RuleEvidenceClaimSchedulerStore,
+} from "./rule-evidence-claim-scheduler.js";
 import {
   assertSearchLeaseRecord,
   type SearchLeaseRecord,
@@ -89,8 +140,13 @@ import type {
   DiscoveryRunRecord,
   OperationalStorageProjection,
 } from "./types.js";
+import {
+  assertAiUsageEvent,
+  type AiUsageEvent,
+  type AiUsageEventStore,
+} from "./ai-usage-ledger.js";
 
-const SCHEMA_VERSION = 18;
+const SCHEMA_VERSION = 26;
 const MAX_SEARCH_LEASE_CORPUS_BYTES = 32_000_000;
 
 type StoredRunRow = Readonly<{
@@ -112,6 +168,12 @@ type StoredCatalogObservationRow = Readonly<{
   record_json: string;
   record_hash: string;
   raw_bytes: Uint8Array;
+}>;
+
+type StoredAiUsageEventRow = Readonly<{
+  event_id: string;
+  record_json: string;
+  record_hash: string;
 }>;
 
 type StoredCandidateBookObservationRow = Readonly<{
@@ -189,6 +251,48 @@ type SemanticReviewRow = Readonly<{
   record_hash: string;
 }>;
 
+type ProbabilityEstimationRunRow = Readonly<{
+  run_id: string;
+  semantic_review_artifact_hash: string;
+  semantic_constraint_artifact_hash: string;
+  role: string;
+  record_json: string;
+  record_hash: string;
+}>;
+
+type ProbabilityEstimationJobRow = Readonly<{
+  job_id: string;
+  record_json: string;
+  record_hash: string;
+}>;
+
+type ProbabilityEstimationNotificationRow = Readonly<{
+  notification_id: string;
+  record_json: string;
+  record_hash: string;
+}>;
+
+type PremiseAnalysisRow = Readonly<{
+  analysis_id: string;
+  proposal_id: string;
+  semantic_review_artifact_hash: string;
+  evidence_scope_identity: string;
+  record_json: string;
+  record_hash: string;
+}>;
+
+type PremiseAnalysisJobRow = Readonly<{
+  job_id: string;
+  record_json: string;
+  record_hash: string;
+}>;
+
+type PremiseAnalysisNotificationRow = Readonly<{
+  notification_id: string;
+  record_json: string;
+  record_hash: string;
+}>;
+
 type SemanticReviewJobRow = Readonly<{
   job_id: string;
   record_json: string;
@@ -197,6 +301,50 @@ type SemanticReviewJobRow = Readonly<{
 
 type SemanticReviewNotificationRow = Readonly<{
   notification_id: string;
+  record_json: string;
+  record_hash: string;
+}>;
+
+type EvidenceAcquisitionJobRow = Readonly<{
+  job_id: string;
+  record_json: string;
+  record_hash: string;
+}>;
+
+type EvidenceDocumentRow = Readonly<{
+  document_id: string;
+  record_json: string;
+  record_hash: string;
+  raw_bytes: Uint8Array;
+}>;
+
+type EvidenceDocumentTextRow = Readonly<{
+  extraction_id: string;
+  document_id: string;
+  record_json: string;
+  record_hash: string;
+  extracted_text: string;
+}>;
+
+type EvidenceDocumentObservationRow = Readonly<{
+  observation_id: string;
+  acquisition_job_id: string;
+  document_id: string;
+  record_json: string;
+  record_hash: string;
+}>;
+
+type RuleEvidenceClaimJobRow = Readonly<{
+  job_id: string;
+  record_json: string;
+  record_hash: string;
+}>;
+
+type RuleEvidenceClaimRecordRow = Readonly<{
+  interpretation_id: string;
+  requirement_id: string;
+  document_id: string;
+  extraction_id: string;
   record_json: string;
   record_hash: string;
 }>;
@@ -675,6 +823,135 @@ function parseSemanticReviewRecord(value: unknown): SemanticReviewRecord {
   return record;
 }
 
+function parseProbabilityEstimationRunRecord(
+  value: unknown,
+): ProbabilityEstimationRunRecord {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite probability estimation row is malformed");
+  }
+  const row = value as Partial<ProbabilityEstimationRunRow>;
+  if (
+    typeof row.run_id !== "string" ||
+    typeof row.semantic_review_artifact_hash !== "string" ||
+    typeof row.semantic_constraint_artifact_hash !== "string" ||
+    typeof row.role !== "string" || typeof row.record_json !== "string" ||
+    typeof row.record_hash !== "string"
+  ) throw new Error("SQLite probability estimation row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite probability estimation record contains invalid JSON");
+  }
+  const record = assertProbabilityEstimationRunRecord(decoded);
+  if (
+    record.runId !== row.run_id ||
+    record.semanticReviewArtifactHash !== row.semantic_review_artifact_hash ||
+    record.semanticConstraintArtifactHash !== row.semantic_constraint_artifact_hash ||
+    record.role !== row.role || hashCanonical(record) !== row.record_hash
+  ) throw new Error("SQLite probability estimation record identity mismatch");
+  return record;
+}
+
+function parseProbabilityEstimationJobRecord(
+  value: unknown,
+): ProbabilityEstimationJobRecord {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite probability estimation job row is malformed");
+  }
+  const row = value as Partial<ProbabilityEstimationJobRow>;
+  if (
+    typeof row.job_id !== "string" || typeof row.record_json !== "string" ||
+    typeof row.record_hash !== "string"
+  ) throw new Error("SQLite probability estimation job row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite probability estimation job contains invalid JSON");
+  }
+  const record = assertProbabilityEstimationJobRecord(decoded);
+  if (record.jobId !== row.job_id || hashCanonical(record) !== row.record_hash) {
+    throw new Error("SQLite probability estimation job identity mismatch");
+  }
+  return record;
+}
+
+function parseProbabilityEstimationNotificationRecord(
+  value: unknown,
+): ProbabilityEstimationNotificationRecord {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite probability estimation notification row is malformed");
+  }
+  const row = value as Partial<ProbabilityEstimationNotificationRow>;
+  if (
+    typeof row.notification_id !== "string" || typeof row.record_json !== "string" ||
+    typeof row.record_hash !== "string"
+  ) throw new Error("SQLite probability estimation notification row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite probability estimation notification contains invalid JSON");
+  }
+  const record = assertProbabilityEstimationNotificationRecord(decoded);
+  if (
+    record.notificationId !== row.notification_id ||
+    hashCanonical(record) !== row.record_hash
+  ) throw new Error("SQLite probability estimation notification identity mismatch");
+  return record;
+}
+
+function parsePremiseAnalysisRecord(value: unknown): PremiseAnalysisRecord {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite premise analysis row is malformed");
+  }
+  const row = value as Partial<PremiseAnalysisRow>;
+  if (
+    typeof row.analysis_id !== "string" || typeof row.proposal_id !== "string" ||
+    typeof row.semantic_review_artifact_hash !== "string" ||
+    typeof row.evidence_scope_identity !== "string" ||
+    typeof row.record_json !== "string" || typeof row.record_hash !== "string"
+  ) throw new Error("SQLite premise analysis row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite premise analysis record contains invalid JSON");
+  }
+  const record = assertPremiseAnalysisRecord(decoded);
+  if (
+    record.status === "RUNNING" || record.analysisId !== row.analysis_id ||
+    record.proposalId !== row.proposal_id ||
+    record.semanticReviewArtifactHash !== row.semantic_review_artifact_hash ||
+    record.evidenceScopeIdentity !== row.evidence_scope_identity ||
+    hashCanonical(record) !== row.record_hash
+  ) throw new Error("SQLite premise analysis record identity mismatch");
+  return record;
+}
+
+function parsePremiseAnalysisJobRecord(value: unknown): PremiseAnalysisJobRecord {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite premise analysis job row is malformed");
+  }
+  const row = value as Partial<PremiseAnalysisJobRow>;
+  if (
+    typeof row.job_id !== "string" || typeof row.record_json !== "string" ||
+    typeof row.record_hash !== "string"
+  ) throw new Error("SQLite premise analysis job row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite premise analysis job contains invalid JSON");
+  }
+  const record = assertPremiseAnalysisJobRecord(decoded);
+  if (record.jobId !== row.job_id || hashCanonical(record) !== row.record_hash) {
+    throw new Error("SQLite premise analysis job identity mismatch");
+  }
+  return record;
+}
+
 function parseSemanticReviewJobRecord(value: unknown): SemanticReviewJobRecord {
   if (value === null || typeof value !== "object") {
     throw new Error("SQLite semantic review job row is malformed");
@@ -696,6 +973,30 @@ function parseSemanticReviewJobRecord(value: unknown): SemanticReviewJobRecord {
   const record = assertSemanticReviewJobRecord(decoded);
   if (record.jobId !== row.job_id || hashCanonical(record) !== row.record_hash) {
     throw new Error("SQLite semantic review job identity mismatch");
+  }
+  return record;
+}
+
+function parsePremiseAnalysisNotificationRecord(
+  value: unknown,
+): PremiseAnalysisNotificationRecord {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite premise analysis notification row is malformed");
+  }
+  const row = value as Partial<PremiseAnalysisNotificationRow>;
+  if (
+    typeof row.notification_id !== "string" || typeof row.record_json !== "string" ||
+    typeof row.record_hash !== "string"
+  ) throw new Error("SQLite premise analysis notification row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite premise analysis notification contains invalid JSON");
+  }
+  const record = assertPremiseAnalysisNotificationRecord(decoded);
+  if (record.notificationId !== row.notification_id || hashCanonical(record) !== row.record_hash) {
+    throw new Error("SQLite premise analysis notification identity mismatch");
   }
   return record;
 }
@@ -727,6 +1028,158 @@ function parseSemanticReviewNotificationRecord(
   ) {
     throw new Error("SQLite semantic review notification identity mismatch");
   }
+  return record;
+}
+
+function parseEvidenceAcquisitionJobRecord(value: unknown): EvidenceAcquisitionJobRecord {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite evidence acquisition job row is malformed");
+  }
+  const row = value as Partial<EvidenceAcquisitionJobRow>;
+  if (
+    typeof row.job_id !== "string" || typeof row.record_json !== "string" ||
+    typeof row.record_hash !== "string"
+  ) throw new Error("SQLite evidence acquisition job row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite evidence acquisition job contains invalid JSON");
+  }
+  const record = assertEvidenceAcquisitionJobRecord(decoded);
+  if (record.jobId !== row.job_id || hashCanonical(record) !== row.record_hash) {
+    throw new Error("SQLite evidence acquisition job identity mismatch");
+  }
+  return record;
+}
+
+function parseEvidenceDocument(value: unknown): StoredEvidenceDocument {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite evidence document row is malformed");
+  }
+  const row = value as Partial<EvidenceDocumentRow>;
+  if (
+    typeof row.document_id !== "string" || typeof row.record_json !== "string" ||
+    typeof row.record_hash !== "string" || !(row.raw_bytes instanceof Uint8Array)
+  ) throw new Error("SQLite evidence document row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite evidence document contains invalid JSON");
+  }
+  const document = assertStoredEvidenceDocument({
+    record: decoded as EvidenceDocumentRecord,
+    bytes: row.raw_bytes,
+  });
+  if (
+    document.record.documentId !== row.document_id ||
+    hashCanonical(document.record) !== row.record_hash
+  ) throw new Error("SQLite evidence document identity mismatch");
+  return document;
+}
+
+function parseEvidenceDocumentText(value: unknown): StoredEvidenceDocumentText {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite evidence document text row is malformed");
+  }
+  const row = value as Partial<EvidenceDocumentTextRow>;
+  if (
+    typeof row.extraction_id !== "string" || typeof row.document_id !== "string" ||
+    typeof row.record_json !== "string" || typeof row.record_hash !== "string" ||
+    typeof row.extracted_text !== "string"
+  ) throw new Error("SQLite evidence document text row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite evidence document text contains invalid JSON");
+  }
+  const extraction = assertStoredEvidenceDocumentText({
+    record: decoded as EvidenceDocumentTextRecord,
+    text: row.extracted_text,
+  });
+  if (
+    extraction.record.extractionId !== row.extraction_id ||
+    extraction.record.documentId !== row.document_id ||
+    hashCanonical(extraction.record) !== row.record_hash
+  ) throw new Error("SQLite evidence document text identity mismatch");
+  return extraction;
+}
+
+function parseEvidenceDocumentObservation(
+  value: unknown,
+): Readonly<{ jobId: Hash; observation: EvidenceDocumentObservation }> {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite evidence document observation row is malformed");
+  }
+  const row = value as Partial<EvidenceDocumentObservationRow>;
+  if (
+    typeof row.observation_id !== "string" ||
+    typeof row.acquisition_job_id !== "string" || typeof row.document_id !== "string" ||
+    typeof row.record_json !== "string" || typeof row.record_hash !== "string"
+  ) throw new Error("SQLite evidence document observation row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite evidence document observation contains invalid JSON");
+  }
+  const observation = assertEvidenceDocumentObservation(decoded);
+  if (
+    observation.observationId !== row.observation_id ||
+    observation.documentId !== row.document_id ||
+    hashCanonical(observation) !== row.record_hash ||
+    !/^sha256:[0-9a-f]{64}$/u.test(row.acquisition_job_id)
+  ) throw new Error("SQLite evidence document observation identity mismatch");
+  return Object.freeze({ jobId: row.acquisition_job_id as Hash, observation });
+}
+
+function parseRuleEvidenceClaimJobRecord(value: unknown): RuleEvidenceClaimJobRecord {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite rule evidence claim job row is malformed");
+  }
+  const row = value as Partial<RuleEvidenceClaimJobRow>;
+  if (
+    typeof row.job_id !== "string" || typeof row.record_json !== "string" ||
+    typeof row.record_hash !== "string"
+  ) throw new Error("SQLite rule evidence claim job row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite rule evidence claim job contains invalid JSON");
+  }
+  const record = assertRuleEvidenceClaimJobRecord(decoded);
+  if (record.jobId !== row.job_id || hashCanonical(record) !== row.record_hash) {
+    throw new Error("SQLite rule evidence claim job identity mismatch");
+  }
+  return record;
+}
+
+function parseRuleEvidenceClaimRecord(value: unknown): RuleEvidenceClaimRecord {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite rule evidence claim record row is malformed");
+  }
+  const row = value as Partial<RuleEvidenceClaimRecordRow>;
+  if (
+    typeof row.interpretation_id !== "string" ||
+    typeof row.requirement_id !== "string" || typeof row.document_id !== "string" ||
+    typeof row.extraction_id !== "string" || typeof row.record_json !== "string" ||
+    typeof row.record_hash !== "string"
+  ) throw new Error("SQLite rule evidence claim record row has invalid column types");
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite rule evidence claim record contains invalid JSON");
+  }
+  const record = assertRuleEvidenceClaimRecord(decoded);
+  if (
+    record.interpretationId !== row.interpretation_id ||
+    record.requirementId !== row.requirement_id || record.documentId !== row.document_id ||
+    record.extractionId !== row.extraction_id || hashCanonical(record) !== row.record_hash
+  ) throw new Error("SQLite rule evidence claim record identity mismatch");
   return record;
 }
 
@@ -833,6 +1286,34 @@ function parseAnonymousSimulationMaterializationRecord(
   return record;
 }
 
+function parseAiUsageEvent(value: unknown): AiUsageEvent {
+  if (value === null || typeof value !== "object") {
+    throw new Error("SQLite AI usage event row is malformed");
+  }
+  const row = value as Partial<StoredAiUsageEventRow>;
+  if (
+    typeof row.event_id !== "string" ||
+    typeof row.record_json !== "string" ||
+    typeof row.record_hash !== "string"
+  ) {
+    throw new Error("SQLite AI usage event row has invalid column types");
+  }
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(row.record_json);
+  } catch {
+    throw new Error("SQLite AI usage event contains invalid JSON");
+  }
+  const event = assertAiUsageEvent(decoded as AiUsageEvent);
+  if (
+    event.eventId !== row.event_id ||
+    hashCanonical(event) !== row.record_hash
+  ) {
+    throw new Error("SQLite AI usage event identity mismatch");
+  }
+  return event;
+}
+
 function readPragmaNumber(database: DatabaseSync, pragma: string): number {
   const row = database.prepare(`PRAGMA ${pragma}`).get();
   if (row === undefined || row === null || typeof row !== "object") {
@@ -870,7 +1351,15 @@ export class SqliteOperationalStore
     SearchIssueRecordStore,
     SearchAttentionStore,
     SemanticReviewRecordStore,
+    ProbabilityEstimationRunStore,
+    ProbabilityEstimationSchedulerStore,
+    AiUsageEventStore,
+    PremiseAnalysisRecordStore,
+    PremiseAnalysisSchedulerStore,
     SemanticReviewSchedulerStore,
+    EvidenceAcquisitionSchedulerStore,
+    RuleEvidenceClaimRecordStore,
+    RuleEvidenceClaimSchedulerStore,
     OpportunityLifecycleJournalStore,
     AnonymousSimulationMaterializationStore
 {
@@ -910,8 +1399,22 @@ export class SqliteOperationalStore
   public readonly searchAttentionMessageStorage: OperationalStorageProjection<"messageId">;
   public readonly searchAttentionDeliveryStorage: OperationalStorageProjection<"deliveryId">;
   public readonly semanticReviewStorage: OperationalStorageProjection<"reviewId">;
+  public readonly probabilityEstimationStorage: OperationalStorageProjection<"runId">;
+  public readonly probabilityEstimationJobStorage: OperationalStorageProjection<"jobId">;
+  public readonly probabilityEstimationNotificationStorage:
+    OperationalStorageProjection<"notificationId">;
+  public readonly aiUsageStorage: OperationalStorageProjection<"eventId">;
+  public readonly premiseAnalysisStorage: OperationalStorageProjection<"analysisId">;
+  public readonly premiseAnalysisJobStorage: OperationalStorageProjection<"jobId">;
+  public readonly premiseAnalysisNotificationStorage: OperationalStorageProjection<"notificationId">;
   public readonly semanticReviewJobStorage: OperationalStorageProjection<"jobId">;
   public readonly semanticReviewNotificationStorage: OperationalStorageProjection<"notificationId">;
+  public readonly evidenceAcquisitionJobStorage: OperationalStorageProjection<"jobId">;
+  public readonly evidenceDocumentStorage: OperationalStorageProjection<"documentId">;
+  public readonly evidenceDocumentTextStorage: OperationalStorageProjection<"extractionId">;
+  public readonly evidenceDocumentObservationStorage: OperationalStorageProjection<"observationId">;
+  public readonly ruleEvidenceClaimStorage: OperationalStorageProjection<"interpretationId">;
+  public readonly ruleEvidenceClaimJobStorage: OperationalStorageProjection<"jobId">;
   public readonly opportunityLifecycleStorage: OperationalStorageProjection<"opportunityId">;
   public readonly anonymousSimulationMaterializationStorage: Readonly<{
     mode: "MEMORY" | "SQLITE_WAL";
@@ -1034,6 +1537,48 @@ export class SqliteOperationalStore
       schemaVersion: SCHEMA_VERSION,
       idempotencyKey: "reviewId",
     });
+    this.probabilityEstimationStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "runId",
+    });
+    this.probabilityEstimationJobStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "jobId",
+    });
+    this.probabilityEstimationNotificationStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "notificationId",
+    });
+    this.aiUsageStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "eventId",
+    });
+    this.premiseAnalysisStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "analysisId",
+    });
+    this.premiseAnalysisJobStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "jobId",
+    });
+    this.premiseAnalysisNotificationStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "notificationId",
+    });
     this.semanticReviewJobStorage = Object.freeze({
       mode: inMemory ? "MEMORY" : "SQLITE_WAL",
       durable: !inMemory,
@@ -1045,6 +1590,42 @@ export class SqliteOperationalStore
       durable: !inMemory,
       schemaVersion: SCHEMA_VERSION,
       idempotencyKey: "notificationId",
+    });
+    this.evidenceAcquisitionJobStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "jobId",
+    });
+    this.evidenceDocumentStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "documentId",
+    });
+    this.evidenceDocumentTextStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "extractionId",
+    });
+    this.evidenceDocumentObservationStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "observationId",
+    });
+    this.ruleEvidenceClaimStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "interpretationId",
+    });
+    this.ruleEvidenceClaimJobStorage = Object.freeze({
+      mode: inMemory ? "MEMORY" : "SQLITE_WAL",
+      durable: !inMemory,
+      schemaVersion: SCHEMA_VERSION,
+      idempotencyKey: "jobId",
     });
     this.opportunityLifecycleStorage = Object.freeze({
       mode: inMemory ? "MEMORY" : "SQLITE_WAL",
@@ -1115,10 +1696,88 @@ export class SqliteOperationalStore
          WHERE type = 'table' AND name = 'semantic_review_notifications'`,
       )
       .get() !== undefined;
+    const probabilityEstimationRunTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'probability_estimation_runs'`,
+      )
+      .get() !== undefined;
+    const probabilityEstimationJobTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'probability_estimation_jobs'`,
+      )
+      .get() !== undefined;
+    const probabilityEstimationNotificationTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'probability_estimation_notifications'`,
+      )
+      .get() !== undefined;
+    const aiUsageEventTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'ai_usage_events'`,
+      )
+      .get() !== undefined;
+    const premiseAnalysisRecordTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'premise_analysis_records'`,
+      )
+      .get() !== undefined;
+    const premiseAnalysisJobTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'premise_analysis_jobs'`,
+      )
+      .get() !== undefined;
+    const premiseAnalysisNotificationTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'premise_analysis_notifications'`,
+      )
+      .get() !== undefined;
     const searchQuoteObservationTableExists = this.#database
       .prepare(
         `SELECT name FROM sqlite_master
          WHERE type = 'table' AND name = 'search_quote_observations'`,
+      )
+      .get() !== undefined;
+    const evidenceAcquisitionJobTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'evidence_acquisition_jobs'`,
+      )
+      .get() !== undefined;
+    const evidenceDocumentTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'evidence_documents'`,
+      )
+      .get() !== undefined;
+    const evidenceDocumentTextTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'evidence_document_texts'`,
+      )
+      .get() !== undefined;
+    const evidenceDocumentObservationTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'evidence_document_observations'`,
+      )
+      .get() !== undefined;
+    const ruleEvidenceClaimJobTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'rule_evidence_claim_jobs'`,
+      )
+      .get() !== undefined;
+    const ruleEvidenceClaimRecordTableExists = this.#database
+      .prepare(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table' AND name = 'rule_evidence_claim_records'`,
       )
       .get() !== undefined;
     if (
@@ -1131,7 +1790,17 @@ export class SqliteOperationalStore
       searchAttentionDeliveryTableExists &&
       semanticReviewJobTableExists &&
       semanticReviewNotificationTableExists &&
-      searchQuoteObservationTableExists
+      probabilityEstimationRunTableExists &&
+      probabilityEstimationJobTableExists &&
+      probabilityEstimationNotificationTableExists &&
+      aiUsageEventTableExists &&
+      searchQuoteObservationTableExists &&
+      evidenceAcquisitionJobTableExists && evidenceDocumentTableExists &&
+      evidenceDocumentTextTableExists && evidenceDocumentObservationTableExists &&
+      ruleEvidenceClaimJobTableExists && ruleEvidenceClaimRecordTableExists
+      && premiseAnalysisRecordTableExists
+      && premiseAnalysisJobTableExists
+      && premiseAnalysisNotificationTableExists
     ) return;
     this.#database.exec("BEGIN IMMEDIATE");
     try {
@@ -1717,6 +2386,322 @@ export class SqliteOperationalStore
             SELECT * FROM search_attention_deliveries_v17;
           DROP TABLE search_attention_deliveries_v17;
           DROP TABLE search_attention_messages_v17;
+        `);
+      }
+      if (
+        current < 19 || !evidenceAcquisitionJobTableExists ||
+        !evidenceDocumentTableExists || !evidenceDocumentTextTableExists ||
+        !evidenceDocumentObservationTableExists
+      ) {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS evidence_acquisition_jobs (
+            job_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(job_id) = 71 AND job_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            status TEXT NOT NULL CHECK (
+              status IN (
+                'PENDING', 'LEASED', 'RETRY_WAIT', 'CAPTURED', 'STALE',
+                'UNSUPPORTED', 'EXHAUSTED'
+              )
+            ),
+            next_attempt_at TEXT NOT NULL CHECK (length(next_attempt_at) > 0),
+            updated_at TEXT NOT NULL CHECK (length(updated_at) > 0),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            )
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS evidence_acquisition_jobs_due
+            ON evidence_acquisition_jobs (status, next_attempt_at, job_id);
+
+          CREATE TABLE IF NOT EXISTS evidence_documents (
+            document_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(document_id) = 71 AND document_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            raw_hash TEXT NOT NULL CHECK (
+              length(raw_hash) = 71 AND raw_hash GLOB 'sha256:[0-9a-f]*'
+            ),
+            received_at TEXT NOT NULL CHECK (length(received_at) > 0),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            ),
+            raw_bytes BLOB NOT NULL
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS evidence_documents_received
+            ON evidence_documents (received_at DESC, document_id DESC);
+
+          CREATE TABLE IF NOT EXISTS evidence_document_texts (
+            extraction_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(extraction_id) = 71 AND extraction_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            document_id TEXT NOT NULL CHECK (
+              length(document_id) = 71 AND document_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            ),
+            extracted_text TEXT NOT NULL,
+            FOREIGN KEY (document_id) REFERENCES evidence_documents(document_id)
+              ON DELETE CASCADE
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS evidence_document_texts_document
+            ON evidence_document_texts (document_id, extraction_id);
+
+          CREATE TABLE IF NOT EXISTS evidence_document_observations (
+            observation_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(observation_id) = 71 AND observation_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            acquisition_job_id TEXT NOT NULL CHECK (
+              length(acquisition_job_id) = 71 AND
+              acquisition_job_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            document_id TEXT NOT NULL CHECK (
+              length(document_id) = 71 AND document_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            received_at TEXT NOT NULL CHECK (length(received_at) > 0),
+            http_status INTEGER NOT NULL CHECK (http_status IN (200, 304)),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            ),
+            FOREIGN KEY (acquisition_job_id) REFERENCES evidence_acquisition_jobs(job_id)
+              ON DELETE CASCADE,
+            FOREIGN KEY (document_id) REFERENCES evidence_documents(document_id)
+              ON DELETE RESTRICT
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS evidence_document_observations_job
+            ON evidence_document_observations (
+              acquisition_job_id, received_at DESC, observation_id DESC
+            );
+        `);
+      }
+      if (
+        current < 20 || !ruleEvidenceClaimJobTableExists ||
+        !ruleEvidenceClaimRecordTableExists
+      ) {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS rule_evidence_claim_jobs (
+            job_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(job_id) = 71 AND job_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            status TEXT NOT NULL CHECK (
+              status IN ('PENDING', 'LEASED', 'RETRY_WAIT', 'PASS', 'EXHAUSTED')
+            ),
+            next_attempt_at TEXT NOT NULL CHECK (length(next_attempt_at) > 0),
+            updated_at TEXT NOT NULL CHECK (length(updated_at) > 0),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            )
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS rule_evidence_claim_jobs_due
+            ON rule_evidence_claim_jobs (status, next_attempt_at, job_id);
+
+          CREATE TABLE IF NOT EXISTS rule_evidence_claim_records (
+            interpretation_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(interpretation_id) = 71 AND
+              interpretation_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            requirement_id TEXT NOT NULL CHECK (
+              length(requirement_id) = 71 AND requirement_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            document_id TEXT NOT NULL CHECK (
+              length(document_id) = 71 AND document_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            extraction_id TEXT NOT NULL CHECK (
+              length(extraction_id) = 71 AND extraction_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            status TEXT NOT NULL CHECK (status IN ('PASS', 'FAILED')),
+            completed_at TEXT NOT NULL CHECK (length(completed_at) > 0),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            ),
+            FOREIGN KEY (document_id) REFERENCES evidence_documents(document_id)
+              ON DELETE RESTRICT,
+            FOREIGN KEY (extraction_id) REFERENCES evidence_document_texts(extraction_id)
+              ON DELETE RESTRICT
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS rule_evidence_claim_records_requirement
+            ON rule_evidence_claim_records (
+              requirement_id, completed_at DESC, interpretation_id DESC
+            );
+        `);
+      }
+      if (current < 21 || !premiseAnalysisRecordTableExists) {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS premise_analysis_records (
+            analysis_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(analysis_id) = 71 AND analysis_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            proposal_id TEXT NOT NULL CHECK (
+              length(proposal_id) = 71 AND proposal_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            semantic_review_artifact_hash TEXT NOT NULL CHECK (
+              length(semantic_review_artifact_hash) = 71 AND
+              semantic_review_artifact_hash GLOB 'sha256:[0-9a-f]*'
+            ),
+            evidence_scope_identity TEXT NOT NULL CHECK (
+              length(evidence_scope_identity) = 71 AND
+              evidence_scope_identity GLOB 'sha256:[0-9a-f]*'
+            ),
+            status TEXT NOT NULL CHECK (status IN ('PASS', 'FAILED')),
+            completed_at TEXT NOT NULL CHECK (length(completed_at) > 0),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            )
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS premise_analysis_records_completed
+            ON premise_analysis_records (completed_at DESC, analysis_id DESC);
+          CREATE INDEX IF NOT EXISTS premise_analysis_records_proposal
+            ON premise_analysis_records (
+              proposal_id, semantic_review_artifact_hash, completed_at DESC
+            );
+        `);
+      }
+      if (current < 22 || !premiseAnalysisJobTableExists) {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS premise_analysis_jobs (
+            job_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(job_id) = 71 AND job_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            status TEXT NOT NULL CHECK (
+              status IN ('PENDING', 'LEASED', 'RETRY_WAIT', 'PASS', 'EXHAUSTED')
+            ),
+            next_attempt_at TEXT NOT NULL CHECK (length(next_attempt_at) > 0),
+            updated_at TEXT NOT NULL CHECK (length(updated_at) > 0),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            )
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS premise_analysis_jobs_due
+            ON premise_analysis_jobs (status, next_attempt_at, job_id);
+        `);
+      }
+      if (current < 23 || !premiseAnalysisNotificationTableExists) {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS premise_analysis_notifications (
+            notification_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(notification_id) = 71 AND notification_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            dedupe_identity TEXT NOT NULL UNIQUE CHECK (
+              length(dedupe_identity) = 71 AND dedupe_identity GLOB 'sha256:[0-9a-f]*'
+            ),
+            status TEXT NOT NULL CHECK (status IN ('UNREAD', 'READ')),
+            created_at TEXT NOT NULL CHECK (length(created_at) > 0),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            )
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS premise_analysis_notifications_status_created
+            ON premise_analysis_notifications (status, created_at DESC);
+        `);
+      }
+      if (current < 24 || !probabilityEstimationRunTableExists) {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS probability_estimation_runs (
+            run_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(run_id) = 71 AND run_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            semantic_review_artifact_hash TEXT NOT NULL CHECK (
+              length(semantic_review_artifact_hash) = 71 AND
+              semantic_review_artifact_hash GLOB 'sha256:[0-9a-f]*'
+            ),
+            semantic_constraint_artifact_hash TEXT NOT NULL CHECK (
+              length(semantic_constraint_artifact_hash) = 71 AND
+              semantic_constraint_artifact_hash GLOB 'sha256:[0-9a-f]*'
+            ),
+            role TEXT NOT NULL CHECK (
+              role IN ('REFERENCE_CLASS', 'CAUSAL', 'INDEPENDENT')
+            ),
+            status TEXT NOT NULL CHECK (
+              status IN ('RUNNING', 'PASS', 'ABSTAINED', 'FAILED')
+            ),
+            started_at TEXT NOT NULL CHECK (length(started_at) > 0),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            )
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS probability_estimation_runs_scope
+            ON probability_estimation_runs (
+              semantic_review_artifact_hash,
+              semantic_constraint_artifact_hash,
+              started_at DESC,
+              run_id DESC
+            );
+        `);
+      }
+      if (
+        current < 25 || !probabilityEstimationJobTableExists ||
+        !probabilityEstimationNotificationTableExists
+      ) {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS probability_estimation_jobs (
+            job_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(job_id) = 71 AND job_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            status TEXT NOT NULL CHECK (
+              status IN (
+                'PENDING', 'LEASED', 'RETRY_WAIT', 'BLOCKED_EVIDENCE',
+                'PASS', 'ABSTAINED', 'EXHAUSTED'
+              )
+            ),
+            next_attempt_at TEXT NOT NULL CHECK (length(next_attempt_at) > 0),
+            updated_at TEXT NOT NULL CHECK (length(updated_at) > 0),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            )
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS probability_estimation_jobs_due
+            ON probability_estimation_jobs (status, next_attempt_at, job_id);
+          CREATE TABLE IF NOT EXISTS probability_estimation_notifications (
+            notification_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(notification_id) = 71 AND notification_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            dedupe_identity TEXT NOT NULL UNIQUE CHECK (
+              length(dedupe_identity) = 71 AND dedupe_identity GLOB 'sha256:[0-9a-f]*'
+            ),
+            status TEXT NOT NULL CHECK (status IN ('UNREAD', 'READ')),
+            created_at TEXT NOT NULL CHECK (length(created_at) > 0),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            )
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS probability_estimation_notifications_status_created
+            ON probability_estimation_notifications (status, created_at DESC);
+        `);
+      }
+      if (current < 26 || !aiUsageEventTableExists) {
+        this.#database.exec(`
+          CREATE TABLE IF NOT EXISTS ai_usage_events (
+            event_id TEXT PRIMARY KEY NOT NULL CHECK (
+              length(event_id) = 71 AND event_id GLOB 'sha256:[0-9a-f]*'
+            ),
+            occurred_at TEXT NOT NULL CHECK (length(occurred_at) > 0),
+            purpose TEXT NOT NULL CHECK (
+              purpose IN (
+                'DISCOVERY_FAST', 'SEMANTIC_REVIEW', 'RULE_EVIDENCE_CLAIM',
+                'PREMISE_ANALYSIS', 'PROBABILITY_ESTIMATION',
+                'PI_INVESTIGATION', 'PI_MARKET_ARCHAEOLOGY'
+              )
+            ),
+            record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+            record_hash TEXT NOT NULL CHECK (
+              length(record_hash) = 71 AND record_hash GLOB 'sha256:[0-9a-f]*'
+            )
+          ) STRICT;
+          CREATE INDEX IF NOT EXISTS ai_usage_events_occurred
+            ON ai_usage_events (occurred_at DESC, event_id DESC);
+          CREATE INDEX IF NOT EXISTS ai_usage_events_purpose_occurred
+            ON ai_usage_events (purpose, occurred_at DESC, event_id DESC);
         `);
       }
       this.#database.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
@@ -2478,8 +3463,10 @@ export class SqliteOperationalStore
           validated.lineage.duplicateOfLeaseId !== null &&
           prior.lineage.noveltySignature === validated.lineage.noveltySignature;
         const monotonicDeepTransition =
-          prior.lease.algorithmVersion === "pmh.ai-search-leases.v5" &&
-          validated.lease.algorithmVersion === "pmh.ai-search-leases.v5" &&
+          (prior.lease.algorithmVersion === "pmh.ai-search-leases.v5" ||
+            prior.lease.algorithmVersion === "pmh.ai-search-leases.v6") &&
+          (validated.lease.algorithmVersion === "pmh.ai-search-leases.v5" ||
+            validated.lease.algorithmVersion === "pmh.ai-search-leases.v6") &&
           prior.status === "PASS" && validated.status === "PASS" &&
           prior.completedAt === validated.completedAt &&
           prior.diagnostic === validated.diagnostic &&
@@ -2886,6 +3873,537 @@ export class SqliteOperationalStore
     return Object.freeze(rows.map(parseSemanticReviewRecord));
   }
 
+  public loadProbabilityEstimationRunRecords(
+    limit: number,
+  ): readonly ProbabilityEstimationRunRecord[] {
+    this.#assertOpen();
+    assertLimit(limit);
+    const rows = this.#database
+      .prepare(
+        `SELECT run_id, semantic_review_artifact_hash,
+                semantic_constraint_artifact_hash, role, record_json, record_hash
+         FROM probability_estimation_runs
+         ORDER BY started_at DESC, run_id DESC
+         LIMIT ?`,
+      )
+      .all(limit);
+    return Object.freeze(rows.map(parseProbabilityEstimationRunRecord));
+  }
+
+  public saveProbabilityEstimationRunRecord(
+    record: ProbabilityEstimationRunRecord,
+    retentionLimit: number,
+  ): ProbabilityEstimationRunRecord {
+    this.#assertOpen();
+    assertLimit(retentionLimit);
+    const validated = assertProbabilityEstimationRunRecord(record);
+    const recordJson = canonicalJson(validated);
+    const recordHash = hashCanonical(validated);
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      this.#database
+        .prepare(
+          `INSERT INTO probability_estimation_runs (
+             run_id, semantic_review_artifact_hash,
+             semantic_constraint_artifact_hash, role, status, started_at,
+             record_json, record_hash
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(run_id) DO UPDATE SET
+             status = excluded.status,
+             record_json = excluded.record_json,
+             record_hash = excluded.record_hash
+           WHERE probability_estimation_runs.status IN ('RUNNING', 'FAILED')`,
+        )
+        .run(
+          validated.runId,
+          validated.semanticReviewArtifactHash,
+          validated.semanticConstraintArtifactHash,
+          validated.role,
+          validated.status,
+          validated.startedAt,
+          recordJson,
+          recordHash,
+        );
+      this.#database
+        .prepare(
+          `DELETE FROM probability_estimation_runs
+           WHERE run_id IN (
+             SELECT run_id FROM probability_estimation_runs
+             ORDER BY started_at DESC, run_id DESC LIMIT -1 OFFSET ?
+           )`,
+        )
+        .run(retentionLimit);
+      const row = this.#database
+        .prepare(
+          `SELECT run_id, semantic_review_artifact_hash,
+                  semantic_constraint_artifact_hash, role, record_json, record_hash
+           FROM probability_estimation_runs WHERE run_id = ?`,
+        )
+        .get(validated.runId);
+      if (row === undefined) {
+        throw new Error("SQLite failed to retain the probability estimation run");
+      }
+      const stored = parseProbabilityEstimationRunRecord(row);
+      if (
+        stored.semanticReviewArtifactHash !== validated.semanticReviewArtifactHash ||
+        stored.semanticConstraintArtifactHash !== validated.semanticConstraintArtifactHash ||
+        stored.role !== validated.role ||
+        (stored.status === validated.status && hashCanonical(stored) !== recordHash)
+      ) throw new Error("runId is already bound to another probability estimation run");
+      this.#database.exec("COMMIT");
+      return stored;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  public loadProbabilityEstimationJobRecords(
+    limit: number,
+  ): readonly ProbabilityEstimationJobRecord[] {
+    this.#assertOpen();
+    assertLimit(limit);
+    const rows = this.#database
+      .prepare(
+        `SELECT job_id, record_json, record_hash
+         FROM probability_estimation_jobs
+         ORDER BY next_attempt_at, job_id
+         LIMIT ?`,
+      )
+      .all(limit);
+    return Object.freeze(rows.map(parseProbabilityEstimationJobRecord));
+  }
+
+  public saveProbabilityEstimationJobRecord(
+    record: ProbabilityEstimationJobRecord,
+    retentionLimit: number,
+  ): ProbabilityEstimationJobRecord {
+    this.#assertOpen();
+    assertLimit(retentionLimit);
+    const validated = assertProbabilityEstimationJobRecord(record);
+    const recordJson = canonicalJson(validated);
+    const recordHash = hashCanonical(validated);
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      this.#database
+        .prepare(
+          `INSERT INTO probability_estimation_jobs (
+             job_id, status, next_attempt_at, updated_at, record_json, record_hash
+           ) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(job_id) DO UPDATE SET
+             status = excluded.status,
+             next_attempt_at = excluded.next_attempt_at,
+             updated_at = excluded.updated_at,
+             record_json = excluded.record_json,
+             record_hash = excluded.record_hash`,
+        )
+        .run(
+          validated.jobId,
+          validated.status,
+          validated.nextAttemptAt,
+          validated.updatedAt,
+          recordJson,
+          recordHash,
+        );
+      this.#database
+        .prepare(
+          `DELETE FROM probability_estimation_jobs
+           WHERE job_id IN (
+             SELECT job_id FROM probability_estimation_jobs
+             ORDER BY updated_at DESC, job_id DESC LIMIT -1 OFFSET ?
+           )`,
+        )
+        .run(retentionLimit);
+      const row = this.#database
+        .prepare(
+          `SELECT job_id, record_json, record_hash
+           FROM probability_estimation_jobs WHERE job_id = ?`,
+        )
+        .get(validated.jobId);
+      if (row === undefined) {
+        throw new Error("SQLite failed to retain the probability estimation job");
+      }
+      const stored = parseProbabilityEstimationJobRecord(row);
+      if (hashCanonical(stored) !== recordHash) {
+        throw new Error("jobId is already bound to another probability estimation job");
+      }
+      this.#database.exec("COMMIT");
+      return stored;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  public loadProbabilityEstimationNotificationRecords(
+    limit: number,
+  ): readonly ProbabilityEstimationNotificationRecord[] {
+    this.#assertOpen();
+    assertLimit(limit);
+    const rows = this.#database
+      .prepare(
+        `SELECT notification_id, record_json, record_hash
+         FROM probability_estimation_notifications
+         ORDER BY created_at DESC, notification_id DESC
+         LIMIT ?`,
+      )
+      .all(limit);
+    return Object.freeze(rows.map(parseProbabilityEstimationNotificationRecord));
+  }
+
+  public saveProbabilityEstimationNotificationRecord(
+    record: ProbabilityEstimationNotificationRecord,
+    retentionLimit: number,
+  ): ProbabilityEstimationNotificationRecord {
+    this.#assertOpen();
+    assertLimit(retentionLimit);
+    const validated = assertProbabilityEstimationNotificationRecord(record);
+    const recordJson = canonicalJson(validated);
+    const recordHash = hashCanonical(validated);
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      this.#database
+        .prepare(
+          `INSERT INTO probability_estimation_notifications (
+             notification_id, dedupe_identity, status, created_at,
+             record_json, record_hash
+           ) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(notification_id) DO UPDATE SET
+             status = excluded.status,
+             record_json = excluded.record_json,
+             record_hash = excluded.record_hash`,
+        )
+        .run(
+          validated.notificationId,
+          validated.dedupeIdentity,
+          validated.status,
+          validated.createdAt,
+          recordJson,
+          recordHash,
+        );
+      this.#database
+        .prepare(
+          `DELETE FROM probability_estimation_notifications
+           WHERE notification_id IN (
+             SELECT notification_id FROM probability_estimation_notifications
+             ORDER BY created_at DESC, notification_id DESC LIMIT -1 OFFSET ?
+           )`,
+        )
+        .run(retentionLimit);
+      const row = this.#database
+        .prepare(
+          `SELECT notification_id, record_json, record_hash
+           FROM probability_estimation_notifications WHERE notification_id = ?`,
+        )
+        .get(validated.notificationId);
+      if (row === undefined) {
+        throw new Error("SQLite failed to retain the probability estimation notification");
+      }
+      const stored = parseProbabilityEstimationNotificationRecord(row);
+      if (hashCanonical(stored) !== recordHash) {
+        throw new Error(
+          "notificationId is already bound to another probability estimation notification",
+        );
+      }
+      this.#database.exec("COMMIT");
+      return stored;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  public loadAiUsageEvents(): readonly AiUsageEvent[] {
+    this.#assertOpen();
+    const rows = this.#database
+      .prepare(
+        `SELECT event_id, record_json, record_hash
+         FROM ai_usage_events
+         ORDER BY occurred_at ASC, event_id ASC`,
+      )
+      .all();
+    return Object.freeze(rows.map(parseAiUsageEvent));
+  }
+
+  public saveAiUsageEvent(event: AiUsageEvent): void {
+    this.#assertOpen();
+    const validated = assertAiUsageEvent(event);
+    const recordJson = canonicalJson(validated);
+    const recordHash = hashCanonical(validated);
+    this.#database
+      .prepare(
+        `INSERT INTO ai_usage_events (
+           event_id, occurred_at, purpose, record_json, record_hash
+         ) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(event_id) DO NOTHING`,
+      )
+      .run(
+        validated.eventId,
+        validated.occurredAt,
+        validated.purpose,
+        recordJson,
+        recordHash,
+      );
+    const row = this.#database
+      .prepare(
+        `SELECT event_id, record_json, record_hash
+         FROM ai_usage_events WHERE event_id = ?`,
+      )
+      .get(validated.eventId);
+    if (row === undefined) throw new Error("SQLite failed to retain the AI usage event");
+    const stored = parseAiUsageEvent(row);
+    if (hashCanonical(stored) !== recordHash) {
+      throw new Error("eventId is already bound to another AI usage event");
+    }
+  }
+
+  public loadPremiseAnalysisRecords(
+    limit: number,
+  ): readonly PremiseAnalysisRecord[] {
+    this.#assertOpen();
+    assertLimit(limit);
+    const rows = this.#database
+      .prepare(
+        `SELECT analysis_id, proposal_id, semantic_review_artifact_hash,
+                evidence_scope_identity, record_json, record_hash
+         FROM premise_analysis_records
+         ORDER BY completed_at DESC, analysis_id DESC
+         LIMIT ?`,
+      )
+      .all(limit);
+    return Object.freeze(rows.map(parsePremiseAnalysisRecord));
+  }
+
+  public savePremiseAnalysisRecord(
+    record: PremiseAnalysisRecord,
+    retentionLimit: number,
+  ): PremiseAnalysisRecord {
+    this.#assertOpen();
+    assertLimit(retentionLimit);
+    const validated = assertPremiseAnalysisRecord(record);
+    if (validated.status === "RUNNING" || validated.completedAt === null) {
+      throw new Error("SQLite cannot persist an active premise analysis");
+    }
+    const recordJson = canonicalJson(validated);
+    const recordHash = hashCanonical(validated);
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      this.#database
+        .prepare(
+          `INSERT INTO premise_analysis_records (
+             analysis_id, proposal_id, semantic_review_artifact_hash,
+             evidence_scope_identity, status, completed_at, record_json, record_hash
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(analysis_id) DO UPDATE SET
+             proposal_id = excluded.proposal_id,
+             semantic_review_artifact_hash = excluded.semantic_review_artifact_hash,
+             evidence_scope_identity = excluded.evidence_scope_identity,
+             status = excluded.status,
+             completed_at = excluded.completed_at,
+             record_json = excluded.record_json,
+             record_hash = excluded.record_hash
+           WHERE premise_analysis_records.status = 'FAILED'`,
+        )
+        .run(
+          validated.analysisId,
+          validated.proposalId,
+          validated.semanticReviewArtifactHash,
+          validated.evidenceScopeIdentity,
+          validated.status,
+          validated.completedAt,
+          recordJson,
+          recordHash,
+        );
+      this.#database
+        .prepare(
+          `DELETE FROM premise_analysis_records
+           WHERE analysis_id IN (
+             SELECT analysis_id FROM premise_analysis_records
+             ORDER BY completed_at DESC, analysis_id DESC
+             LIMIT -1 OFFSET ?
+           )`,
+        )
+        .run(retentionLimit);
+      const row = this.#database
+        .prepare(
+          `SELECT analysis_id, proposal_id, semantic_review_artifact_hash,
+                  evidence_scope_identity, record_json, record_hash
+           FROM premise_analysis_records WHERE analysis_id = ?`,
+        )
+        .get(validated.analysisId);
+      if (row === undefined) {
+        throw new Error("SQLite failed to retain the premise analysis record");
+      }
+      const stored = parsePremiseAnalysisRecord(row);
+      if (
+        stored.proposalId !== validated.proposalId ||
+        stored.semanticReviewArtifactHash !== validated.semanticReviewArtifactHash ||
+        stored.evidenceScopeIdentity !== validated.evidenceScopeIdentity ||
+        (stored.status === validated.status && hashCanonical(stored) !== recordHash)
+      ) throw new Error("analysisId is already bound to another premise analysis");
+      this.#database.exec("COMMIT");
+      return stored;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  public loadPremiseAnalysisJobRecords(
+    limit: number,
+  ): readonly PremiseAnalysisJobRecord[] {
+    this.#assertOpen();
+    assertLimit(limit);
+    const rows = this.#database
+      .prepare(
+        `SELECT job_id, record_json, record_hash
+         FROM premise_analysis_jobs
+         ORDER BY next_attempt_at, job_id
+         LIMIT ?`,
+      )
+      .all(limit);
+    return Object.freeze(rows.map(parsePremiseAnalysisJobRecord));
+  }
+
+  public savePremiseAnalysisJobRecord(
+    record: PremiseAnalysisJobRecord,
+    retentionLimit: number,
+  ): PremiseAnalysisJobRecord {
+    this.#assertOpen();
+    assertLimit(retentionLimit);
+    const validated = assertPremiseAnalysisJobRecord(record);
+    const recordJson = canonicalJson(validated);
+    const recordHash = hashCanonical(validated);
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      this.#database
+        .prepare(
+          `INSERT INTO premise_analysis_jobs (
+             job_id, status, next_attempt_at, updated_at, record_json, record_hash
+           ) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(job_id) DO UPDATE SET
+             status = excluded.status,
+             next_attempt_at = excluded.next_attempt_at,
+             updated_at = excluded.updated_at,
+             record_json = excluded.record_json,
+             record_hash = excluded.record_hash`,
+        )
+        .run(
+          validated.jobId,
+          validated.status,
+          validated.nextAttemptAt,
+          validated.updatedAt,
+          recordJson,
+          recordHash,
+        );
+      this.#database
+        .prepare(
+          `DELETE FROM premise_analysis_jobs
+           WHERE job_id IN (
+             SELECT job_id FROM premise_analysis_jobs
+             ORDER BY updated_at DESC, job_id DESC
+             LIMIT -1 OFFSET ?
+           )`,
+        )
+        .run(retentionLimit);
+      const row = this.#database
+        .prepare(
+          `SELECT job_id, record_json, record_hash
+           FROM premise_analysis_jobs WHERE job_id = ?`,
+        )
+        .get(validated.jobId);
+      if (row === undefined) {
+        throw new Error("SQLite failed to retain the premise analysis job");
+      }
+      const stored = parsePremiseAnalysisJobRecord(row);
+      if (hashCanonical(stored) !== recordHash) {
+        throw new Error("jobId is already bound to another premise analysis job");
+      }
+      this.#database.exec("COMMIT");
+      return stored;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  public loadPremiseAnalysisNotificationRecords(
+    limit: number,
+  ): readonly PremiseAnalysisNotificationRecord[] {
+    this.#assertOpen();
+    assertLimit(limit);
+    const rows = this.#database
+      .prepare(
+        `SELECT notification_id, record_json, record_hash
+         FROM premise_analysis_notifications
+         ORDER BY created_at DESC, notification_id DESC
+         LIMIT ?`,
+      )
+      .all(limit);
+    return Object.freeze(rows.map(parsePremiseAnalysisNotificationRecord));
+  }
+
+  public savePremiseAnalysisNotificationRecord(
+    record: PremiseAnalysisNotificationRecord,
+    retentionLimit: number,
+  ): PremiseAnalysisNotificationRecord {
+    this.#assertOpen();
+    assertLimit(retentionLimit);
+    const validated = assertPremiseAnalysisNotificationRecord(record);
+    const recordJson = canonicalJson(validated);
+    const recordHash = hashCanonical(validated);
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      this.#database
+        .prepare(
+          `INSERT INTO premise_analysis_notifications (
+             notification_id, dedupe_identity, status, created_at,
+             record_json, record_hash
+           ) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(notification_id) DO UPDATE SET
+             status = excluded.status,
+             record_json = excluded.record_json,
+             record_hash = excluded.record_hash`,
+        )
+        .run(
+          validated.notificationId,
+          validated.dedupeIdentity,
+          validated.status,
+          validated.createdAt,
+          recordJson,
+          recordHash,
+        );
+      this.#database
+        .prepare(
+          `DELETE FROM premise_analysis_notifications
+           WHERE notification_id IN (
+             SELECT notification_id FROM premise_analysis_notifications
+             ORDER BY created_at DESC, notification_id DESC
+             LIMIT -1 OFFSET ?
+           )`,
+        )
+        .run(retentionLimit);
+      const row = this.#database
+        .prepare(
+          `SELECT notification_id, record_json, record_hash
+           FROM premise_analysis_notifications WHERE notification_id = ?`,
+        )
+        .get(validated.notificationId);
+      if (row === undefined) {
+        throw new Error("SQLite failed to retain the premise analysis notification");
+      }
+      const stored = parsePremiseAnalysisNotificationRecord(row);
+      if (hashCanonical(stored) !== recordHash) {
+        throw new Error("notificationId is already bound to another premise analysis notification");
+      }
+      this.#database.exec("COMMIT");
+      return stored;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   public loadSemanticReviewJobRecords(
     limit: number,
   ): readonly SemanticReviewJobRecord[] {
@@ -3015,6 +4533,467 @@ export class SqliteOperationalStore
       if (hashCanonical(stored) !== recordHash) {
         throw new Error("notificationId is already bound to another review notification");
       }
+      this.#database.exec("COMMIT");
+      return stored;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  public loadEvidenceAcquisitionJobRecords(
+    limit: number,
+  ): readonly EvidenceAcquisitionJobRecord[] {
+    this.#assertOpen();
+    assertLimit(limit);
+    const rows = this.#database
+      .prepare(
+        `SELECT job_id, record_json, record_hash
+         FROM evidence_acquisition_jobs
+         ORDER BY updated_at DESC, job_id DESC
+         LIMIT ?`,
+      )
+      .all(limit);
+    return Object.freeze(rows.map(parseEvidenceAcquisitionJobRecord));
+  }
+
+  #upsertEvidenceAcquisitionJob(
+    record: EvidenceAcquisitionJobRecord,
+  ): EvidenceAcquisitionJobRecord {
+    const recordJson = canonicalJson(record);
+    const recordHash = hashCanonical(record);
+    this.#database
+      .prepare(
+        `INSERT INTO evidence_acquisition_jobs (
+           job_id, status, next_attempt_at, updated_at, record_json, record_hash
+         ) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(job_id) DO UPDATE SET
+           status = excluded.status,
+           next_attempt_at = excluded.next_attempt_at,
+           updated_at = excluded.updated_at,
+           record_json = excluded.record_json,
+           record_hash = excluded.record_hash`,
+      )
+      .run(
+        record.jobId,
+        record.status,
+        record.nextAttemptAt,
+        record.updatedAt,
+        recordJson,
+        recordHash,
+      );
+    const row = this.#database
+      .prepare(
+        `SELECT job_id, record_json, record_hash
+         FROM evidence_acquisition_jobs WHERE job_id = ?`,
+      )
+      .get(record.jobId);
+    if (row === undefined) throw new Error("SQLite failed to retain the evidence acquisition job");
+    const stored = parseEvidenceAcquisitionJobRecord(row);
+    if (hashCanonical(stored) !== recordHash) {
+      throw new Error("jobId is already bound to another evidence acquisition scope");
+    }
+    return stored;
+  }
+
+  #pruneEvidenceAcquisition(retentionLimit: number): void {
+    this.#database
+      .prepare(
+        `DELETE FROM evidence_acquisition_jobs
+         WHERE job_id IN (
+           SELECT job_id FROM evidence_acquisition_jobs
+           ORDER BY updated_at DESC, job_id DESC
+           LIMIT -1 OFFSET ?
+         )`,
+      )
+      .run(retentionLimit);
+    this.#database
+      .prepare(
+        `DELETE FROM evidence_documents
+         WHERE NOT EXISTS (
+           SELECT 1 FROM evidence_document_observations
+           WHERE evidence_document_observations.document_id =
+                 evidence_documents.document_id
+         )`,
+      )
+      .run();
+  }
+
+  public saveEvidenceAcquisitionJobRecord(
+    recordInput: EvidenceAcquisitionJobRecord,
+    retentionLimit: number,
+  ): EvidenceAcquisitionJobRecord {
+    this.#assertOpen();
+    assertLimit(retentionLimit);
+    const record = assertEvidenceAcquisitionJobRecord(recordInput);
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      const stored = this.#upsertEvidenceAcquisitionJob(record);
+      this.#pruneEvidenceAcquisition(retentionLimit);
+      this.#database.exec("COMMIT");
+      return stored;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  public loadEvidenceDocumentCapture(jobId: Hash): EvidenceDocumentCapture | null {
+    this.#assertOpen();
+    if (!/^sha256:[0-9a-f]{64}$/u.test(jobId)) {
+      throw new Error("evidence acquisition job identity is malformed");
+    }
+    const jobRow = this.#database
+      .prepare(
+        `SELECT job_id, record_json, record_hash
+         FROM evidence_acquisition_jobs WHERE job_id = ?`,
+      )
+      .get(jobId);
+    if (jobRow === undefined) return null;
+    const job = parseEvidenceAcquisitionJobRecord(jobRow);
+    if (
+      job.lastObservationId === null || job.lastDocumentId === null ||
+      job.lastExtractionId === null
+    ) return null;
+    const observationRow = this.#database
+      .prepare(
+        `SELECT observation_id, acquisition_job_id, document_id, record_json, record_hash
+         FROM evidence_document_observations
+         WHERE observation_id = ? AND acquisition_job_id = ?`,
+      )
+      .get(job.lastObservationId, job.jobId);
+    const documentRow = this.#database
+      .prepare(
+        `SELECT document_id, record_json, record_hash, raw_bytes
+         FROM evidence_documents WHERE document_id = ?`,
+      )
+      .get(job.lastDocumentId);
+    const extractionRow = this.#database
+      .prepare(
+        `SELECT extraction_id, document_id, record_json, record_hash, extracted_text
+         FROM evidence_document_texts WHERE extraction_id = ?`,
+      )
+      .get(job.lastExtractionId);
+    if (
+      observationRow === undefined || documentRow === undefined || extractionRow === undefined
+    ) throw new Error("SQLite evidence acquisition capture is incomplete");
+    const observation = parseEvidenceDocumentObservation(observationRow);
+    if (observation.jobId !== job.jobId) {
+      throw new Error("SQLite evidence observation is bound to another acquisition job");
+    }
+    return assertEvidenceDocumentCapture(Object.freeze({
+      status: observation.observation.httpStatus === 304 ? "NOT_MODIFIED" : "CAPTURED",
+      observation: observation.observation,
+      document: parseEvidenceDocument(documentRow),
+      extraction: parseEvidenceDocumentText(extractionRow),
+    }));
+  }
+
+  public saveEvidenceAcquisitionCompletion(
+    recordInput: EvidenceAcquisitionJobRecord,
+    captureInput: EvidenceDocumentCapture,
+    retentionLimit: number,
+  ): Readonly<{ record: EvidenceAcquisitionJobRecord; capture: EvidenceDocumentCapture }> {
+    this.#assertOpen();
+    assertLimit(retentionLimit);
+    const record = assertEvidenceAcquisitionJobRecord(recordInput);
+    const capture = assertEvidenceDocumentCapture(captureInput);
+    if (
+      record.status !== "CAPTURED" ||
+      record.lastObservationId !== capture.observation.observationId ||
+      record.lastDocumentId !== capture.document.record.documentId ||
+      record.lastExtractionId !== capture.extraction.record.extractionId ||
+      record.httpStatus !== capture.observation.httpStatus ||
+      record.acquisitionScopeIdentity !== capture.observation.acquisitionScopeIdentity ||
+      !record.requirementIds.includes(capture.observation.requirementId) ||
+      record.locatorIdentity !== capture.observation.locatorIdentity ||
+      record.policyIdentity !== capture.observation.policyIdentity
+    ) throw new Error("evidence acquisition completion lineage is inconsistent");
+    const documentJson = canonicalJson(capture.document.record);
+    const documentHash = hashCanonical(capture.document.record);
+    const extractionJson = canonicalJson(capture.extraction.record);
+    const extractionHash = hashCanonical(capture.extraction.record);
+    const observationJson = canonicalJson(capture.observation);
+    const observationHash = hashCanonical(capture.observation);
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      this.#upsertEvidenceAcquisitionJob(record);
+      this.#database
+        .prepare(
+          `INSERT INTO evidence_documents (
+             document_id, raw_hash, received_at, record_json, record_hash, raw_bytes
+           ) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(document_id) DO NOTHING`,
+        )
+        .run(
+          capture.document.record.documentId,
+          capture.document.record.rawHash,
+          capture.document.record.receivedAt,
+          documentJson,
+          documentHash,
+          capture.document.bytes,
+        );
+      this.#database
+        .prepare(
+          `INSERT INTO evidence_document_texts (
+             extraction_id, document_id, record_json, record_hash, extracted_text
+           ) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(extraction_id) DO NOTHING`,
+        )
+        .run(
+          capture.extraction.record.extractionId,
+          capture.extraction.record.documentId,
+          extractionJson,
+          extractionHash,
+          capture.extraction.text,
+        );
+      this.#database
+        .prepare(
+          `INSERT INTO evidence_document_observations (
+             observation_id, acquisition_job_id, document_id, received_at, http_status,
+             record_json, record_hash
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(observation_id) DO NOTHING`,
+        )
+        .run(
+          capture.observation.observationId,
+          record.jobId,
+          capture.observation.documentId,
+          capture.observation.receivedAt,
+          capture.observation.httpStatus,
+          observationJson,
+          observationHash,
+        );
+      const storedDocumentRow = this.#database
+        .prepare(
+          `SELECT document_id, record_json, record_hash, raw_bytes
+           FROM evidence_documents WHERE document_id = ?`,
+        )
+        .get(capture.document.record.documentId);
+      const storedExtractionRow = this.#database
+        .prepare(
+          `SELECT extraction_id, document_id, record_json, record_hash, extracted_text
+           FROM evidence_document_texts WHERE extraction_id = ?`,
+        )
+        .get(capture.extraction.record.extractionId);
+      const storedObservationRow = this.#database
+        .prepare(
+          `SELECT observation_id, acquisition_job_id, document_id, record_json, record_hash
+           FROM evidence_document_observations WHERE observation_id = ?`,
+        )
+        .get(capture.observation.observationId);
+      if (
+        storedDocumentRow === undefined || storedExtractionRow === undefined ||
+        storedObservationRow === undefined
+      ) throw new Error("SQLite failed to retain the evidence acquisition capture");
+      const storedDocument = parseEvidenceDocument(storedDocumentRow);
+      const storedExtraction = parseEvidenceDocumentText(storedExtractionRow);
+      const storedObservation = parseEvidenceDocumentObservation(storedObservationRow);
+      if (
+        storedDocument.record.documentId !== capture.document.record.documentId ||
+        storedExtraction.record.extractionId !== capture.extraction.record.extractionId ||
+        storedObservation.jobId !== record.jobId ||
+        storedObservation.observation.observationId !== capture.observation.observationId
+      ) throw new Error("content identity is already bound to another evidence artifact");
+      this.#pruneEvidenceAcquisition(retentionLimit);
+      const storedRecord = this.#upsertEvidenceAcquisitionJob(record);
+      const storedCapture = assertEvidenceDocumentCapture(Object.freeze({
+        status: capture.status,
+        observation: storedObservation.observation,
+        document: storedDocument,
+        extraction: storedExtraction,
+      }));
+      this.#database.exec("COMMIT");
+      return Object.freeze({ record: storedRecord, capture: storedCapture });
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  public loadRuleEvidenceClaimJobRecords(
+    limit: number,
+  ): readonly RuleEvidenceClaimJobRecord[] {
+    this.#assertOpen();
+    assertLimit(limit);
+    const rows = this.#database
+      .prepare(
+        `SELECT job_id, record_json, record_hash
+         FROM rule_evidence_claim_jobs
+         ORDER BY updated_at DESC, job_id DESC LIMIT ?`,
+      )
+      .all(limit);
+    return Object.freeze(rows.map(parseRuleEvidenceClaimJobRecord));
+  }
+
+  public saveRuleEvidenceClaimJobRecord(
+    recordInput: RuleEvidenceClaimJobRecord,
+    retentionLimit: number,
+  ): RuleEvidenceClaimJobRecord {
+    this.#assertOpen();
+    assertLimit(retentionLimit);
+    const record = assertRuleEvidenceClaimJobRecord(recordInput);
+    const recordJson = canonicalJson(record);
+    const recordHash = hashCanonical(record);
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      this.#database
+        .prepare(
+          `INSERT INTO rule_evidence_claim_jobs (
+             job_id, status, next_attempt_at, updated_at, record_json, record_hash
+           ) VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(job_id) DO UPDATE SET
+             status = excluded.status,
+             next_attempt_at = excluded.next_attempt_at,
+             updated_at = excluded.updated_at,
+             record_json = excluded.record_json,
+             record_hash = excluded.record_hash`,
+        )
+        .run(
+          record.jobId,
+          record.status,
+          record.nextAttemptAt,
+          record.updatedAt,
+          recordJson,
+          recordHash,
+        );
+      this.#database
+        .prepare(
+          `DELETE FROM rule_evidence_claim_jobs
+           WHERE job_id IN (
+             SELECT job_id FROM rule_evidence_claim_jobs
+             ORDER BY updated_at DESC, job_id DESC LIMIT -1 OFFSET ?
+           )`,
+        )
+        .run(retentionLimit);
+      const row = this.#database
+        .prepare(
+          `SELECT job_id, record_json, record_hash
+           FROM rule_evidence_claim_jobs WHERE job_id = ?`,
+        )
+        .get(record.jobId);
+      if (row === undefined) throw new Error("SQLite failed to retain rule evidence claim job");
+      const stored = parseRuleEvidenceClaimJobRecord(row);
+      if (hashCanonical(stored) !== recordHash) {
+        throw new Error("SQLite rule evidence claim job changed during persistence");
+      }
+      this.#database.exec("COMMIT");
+      return stored;
+    } catch (error) {
+      this.#database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  #verifyRuleEvidenceClaimExtraction(record: RuleEvidenceClaimRecord): void {
+    const row = this.#database
+      .prepare(
+        `SELECT extraction_id, document_id, record_json, record_hash, extracted_text
+         FROM evidence_document_texts WHERE extraction_id = ?`,
+      )
+      .get(record.extractionId);
+    if (row === undefined) {
+      throw new Error("SQLite rule evidence claim lost its retained extraction");
+    }
+    const extraction = parseEvidenceDocumentText(row);
+    if (extraction.record.documentId !== record.documentId) {
+      throw new Error("SQLite rule evidence claim extraction belongs to another document");
+    }
+    if (record.claim === null) return;
+    if (
+      record.claim.documentRawHash !== extraction.record.rawHash ||
+      record.claim.extractionTextHash !== extraction.record.textHash ||
+      record.claim.citations.some((citation) =>
+        extraction.text.slice(citation.start, citation.end) !== citation.quote
+      )
+    ) throw new Error("SQLite rule evidence claim citation or extraction lineage mismatch");
+  }
+
+  public loadRuleEvidenceClaimRecords(
+    limit: number,
+  ): readonly RuleEvidenceClaimRecord[] {
+    this.#assertOpen();
+    assertLimit(limit);
+    const rows = this.#database
+      .prepare(
+        `SELECT interpretation_id, requirement_id, document_id, extraction_id,
+                record_json, record_hash
+         FROM rule_evidence_claim_records
+         ORDER BY completed_at DESC, interpretation_id DESC LIMIT ?`,
+      )
+      .all(limit);
+    return Object.freeze(rows.map((row) => {
+      const record = parseRuleEvidenceClaimRecord(row);
+      this.#verifyRuleEvidenceClaimExtraction(record);
+      return record;
+    }));
+  }
+
+  public saveRuleEvidenceClaimRecord(
+    recordInput: RuleEvidenceClaimRecord,
+    retentionLimit: number,
+  ): RuleEvidenceClaimRecord {
+    this.#assertOpen();
+    assertLimit(retentionLimit);
+    const record = assertRuleEvidenceClaimRecord(recordInput);
+    if (record.status === "RUNNING" || record.completedAt === null) {
+      throw new Error("SQLite cannot persist an active rule evidence claim");
+    }
+    this.#verifyRuleEvidenceClaimExtraction(record);
+    const recordJson = canonicalJson(record);
+    const recordHash = hashCanonical(record);
+    this.#database.exec("BEGIN IMMEDIATE");
+    try {
+      this.#database
+        .prepare(
+          `INSERT INTO rule_evidence_claim_records (
+             interpretation_id, requirement_id, document_id, extraction_id,
+             status, completed_at, record_json, record_hash
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(interpretation_id) DO UPDATE SET
+             requirement_id = excluded.requirement_id,
+             document_id = excluded.document_id,
+             extraction_id = excluded.extraction_id,
+             status = excluded.status,
+             completed_at = excluded.completed_at,
+             record_json = excluded.record_json,
+             record_hash = excluded.record_hash
+           WHERE rule_evidence_claim_records.status = 'FAILED'`,
+        )
+        .run(
+          record.interpretationId,
+          record.requirementId,
+          record.documentId,
+          record.extractionId,
+          record.status,
+          record.completedAt,
+          recordJson,
+          recordHash,
+        );
+      this.#database
+        .prepare(
+          `DELETE FROM rule_evidence_claim_records
+           WHERE interpretation_id IN (
+             SELECT interpretation_id FROM rule_evidence_claim_records
+             ORDER BY completed_at DESC, interpretation_id DESC LIMIT -1 OFFSET ?
+           )`,
+        )
+        .run(retentionLimit);
+      const row = this.#database
+        .prepare(
+          `SELECT interpretation_id, requirement_id, document_id, extraction_id,
+                  record_json, record_hash
+           FROM rule_evidence_claim_records WHERE interpretation_id = ?`,
+        )
+        .get(record.interpretationId);
+      if (row === undefined) throw new Error("SQLite failed to retain rule evidence claim");
+      const stored = parseRuleEvidenceClaimRecord(row);
+      this.#verifyRuleEvidenceClaimExtraction(stored);
+      if (
+        stored.requirementId !== record.requirementId ||
+        stored.documentId !== record.documentId || stored.extractionId !== record.extractionId ||
+        (stored.status === record.status && hashCanonical(stored) !== recordHash)
+      ) throw new Error("SQLite rule evidence claim identity is already bound elsewhere");
       this.#database.exec("COMMIT");
       return stored;
     } catch (error) {

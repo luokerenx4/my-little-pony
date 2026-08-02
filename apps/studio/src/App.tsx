@@ -72,6 +72,24 @@ function formatRateBps(value: number | null): string {
   return `${Math.floor(value / 100)}.${String(value % 100).padStart(2, "0")}%`;
 }
 
+function formatTokenCount(value: string | null): string {
+  if (value === null) return "unknown";
+  try {
+    return BigInt(value).toLocaleString("en-US");
+  } catch {
+    return value;
+  }
+}
+
+function tokenMagnitude(value: string | null): bigint {
+  if (value === null) return -1n;
+  try {
+    return BigInt(value);
+  } catch {
+    return -1n;
+  }
+}
+
 const EMPTY_CATALOG_CONTEXT: StudioProjection["ai"]["catalogContext"] = {
   mode: "VERIFIED_FIXTURE_CATALOGS",
   corpusIdentity: `sha256:${"0".repeat(64)}`,
@@ -124,15 +142,128 @@ const EMPTY_SEMANTIC_REVIEW: StudioProjection["ai"]["semanticReview"] = {
   },
 };
 
+const EMPTY_PROBABILITY_ESTIMATION: StudioProjection["ai"]["probabilityEstimation"] = {
+  schemaVersion: "pmh.probability-estimation-desk.v1",
+  configured: false,
+  model: "unavailable",
+  status: "NEEDS_KEY",
+  activeCount: 0,
+  runCount: 0,
+  passCount: 0,
+  abstainedCount: 0,
+  failedCount: 0,
+  roles: ["REFERENCE_CLASS", "CAUSAL", "INDEPENDENT"],
+  records: [],
+  storage: {
+    mode: "MEMORY",
+    durable: false,
+    schemaVersion: 0,
+    idempotencyKey: "runId",
+  },
+  authority: "ESTIMATION_ORCHESTRATION_ONLY",
+  semanticDecisionAuthority: false,
+  certificateAuthority: false,
+  executionAuthority: false,
+  effects: {
+    externalWrites: false,
+    valueMovingActions: false,
+    liveExecutionEnabled: false,
+  },
+};
+
+const EMPTY_PROBABILITY_ESTIMATION_SCHEDULER:
+  StudioProjection["ai"]["probabilityEstimationScheduler"] = {
+    schemaVersion: "pmh.probability-estimation-scheduler.v1",
+    enabled: false,
+    configured: false,
+    status: "NEEDS_KEY",
+    tickIntervalMs: null,
+    concurrencyLimit: 3,
+    activeCount: 0,
+    dueCount: 0,
+    pendingCount: 0,
+    leasedCount: 0,
+    retryWaitCount: 0,
+    blockedEvidenceCount: 0,
+    passedCount: 0,
+    abstainedCount: 0,
+    exhaustedCount: 0,
+    caseCount: 0,
+    boundReadyCount: 0,
+    freshBoundCount: 0,
+    unsupportedCandidateCount: 0,
+    unreadNotificationCount: 0,
+    budget: {
+      basis: "PROVIDER_ATTEMPTS",
+      maxAttemptsPerRole: 3,
+      maxRequestsPerTick: 3,
+      providerAttemptsStarted: 0,
+    },
+    jobs: [],
+    bounds: [],
+    notifications: [],
+    storage: {
+      jobs: { mode: "MEMORY", durable: false, schemaVersion: 0, idempotencyKey: "jobId" },
+      notifications: {
+        mode: "MEMORY",
+        durable: false,
+        schemaVersion: 0,
+        idempotencyKey: "notificationId",
+      },
+    },
+    authority: "ESTIMATION_ORCHESTRATION_ONLY",
+    semanticDecisionAuthority: false,
+    probabilityCertificateAuthority: false,
+    hardArbitrageAuthority: false,
+    executionAuthority: false,
+    effects: { externalWrites: false, valueMovingActions: false, liveExecutionEnabled: false },
+  };
+
+const EMPTY_AI_USAGE: StudioProjection["ai"]["aiUsage"] = {
+  schemaVersion: "pmh.ai-usage-ledger.v1",
+  eventCount: 0,
+  coverage: { complete: 0, partial: 0, unavailable: 0 },
+  totals: {
+    dimension: "PURPOSE",
+    key: "ALL",
+    invocationCount: "0",
+    durableEffectCount: "0",
+    completeCount: "0",
+    partialCount: "0",
+    unavailableCount: "0",
+    tokens: {
+      inputTokens: null,
+      outputTokens: null,
+      reasoningTokens: null,
+      cacheReadTokens: null,
+      cacheWriteTokens: null,
+      totalTokens: null,
+    },
+  },
+  byPurpose: [],
+  byRole: [],
+  byModel: [],
+  byOutcome: [],
+  hourly: [],
+  daily: [],
+  recentEvents: [],
+  storage: { mode: "MEMORY", durable: false, schemaVersion: 0, idempotencyKey: "eventId" },
+  promptTextRetained: false,
+  outputTextRetained: false,
+  currencyCostEstimated: false,
+};
+
 const EMPTY_SEMANTIC_REVIEW_ADMISSION: StudioProjection["ai"]["semanticReviewAdmission"] = {
-  schemaVersion: "pmh.semantic-review-admission-desk.v1",
-  policy: "TWO_DISTINCT_LISTINGS_AND_COMPILABLE_RELATION_V1",
+  schemaVersion: "pmh.semantic-review-admission-desk.v2",
+  policy: "TWO_TO_FOUR_DISTINCT_LISTINGS_WITH_PREMISE_LANE_V2",
   candidateCount: 0,
   autoReviewCount: 0,
+  premiseReviewCount: 0,
   researchOnlyCount: 0,
   autoReviewRateBps: null,
   countsByReason: {
     TWO_LISTING_COMPILABLE_RELATION: 0,
+    PREMISE_AUDIT_REQUIRED: 0,
     NON_COMPILABLE_RELATION: 0,
     LISTING_ARITY_UNSUPPORTED: 0,
     DUPLICATE_LISTING_REF: 0,
@@ -144,6 +275,9 @@ const EMPTY_SEMANTIC_REVIEW_ADMISSION: StudioProjection["ai"]["semanticReviewAdm
     "SUBSET",
     "MUTUALLY_EXCLUSIVE",
     "EXHAUSTIVE",
+    "CONDITIONAL",
+    "RELATED",
+    "CONFLICTING",
   ],
   manualReviewAvailable: true,
   modelConfidenceUsed: false,
@@ -199,6 +333,107 @@ const EMPTY_SEMANTIC_REVIEW_SCHEDULER: StudioProjection["ai"]["semanticReviewSch
     notifications: { mode: "MEMORY", durable: false, schemaVersion: 0, idempotencyKey: "notificationId" },
   },
   authority: "ADVISORY_ORCHESTRATION_ONLY",
+  semanticDecisionAuthority: false,
+  certificateAuthority: false,
+  executionAuthority: false,
+  effects: {
+    externalWrites: false,
+    valueMovingActions: false,
+    liveExecutionEnabled: false,
+  },
+};
+
+const EMPTY_PREMISE_ANALYSIS: StudioProjection["ai"]["premiseAnalysis"] = {
+  schemaVersion: "pmh.premise-analysis-desk.v1",
+  configured: false,
+  model: "deepseek-v4-flash",
+  interpreterIdentity: `sha256:${"0".repeat(64)}`,
+  status: "NEEDS_KEY",
+  activeCount: 0,
+  runCount: 0,
+  passCount: 0,
+  failedCount: 0,
+  exactEligibleCount: 0,
+  researchOnlyCount: 0,
+  concurrencyLimit: 3,
+  records: [],
+  storage: { mode: "MEMORY", durable: false, schemaVersion: 0, idempotencyKey: "analysisId" },
+  authority: "PROPOSE_ONLY",
+  semanticDecisionAuthority: false,
+  certificateAuthority: false,
+  executionAuthority: false,
+  effects: { externalWrites: false, valueMovingActions: false, liveExecutionEnabled: false },
+};
+
+const EMPTY_PREMISE_ANALYSIS_SCHEDULER: StudioProjection["ai"]["premiseAnalysisScheduler"] = {
+  schemaVersion: "pmh.premise-analysis-scheduler.v2",
+  enabled: false,
+  configured: false,
+  status: "NEEDS_KEY",
+  tickIntervalMs: null,
+  concurrencyLimit: 3,
+  activeCount: 0,
+  dueCount: 0,
+  pendingCount: 0,
+  leasedCount: 0,
+  retryWaitCount: 0,
+  passedCount: 0,
+  exhaustedCount: 0,
+  exactEligibleCount: 0,
+  researchOnlyCount: 0,
+  attributedJobCount: 0,
+  legacyAttributionDebtCount: 0,
+  unreadNotificationCount: 0,
+  budget: {
+    basis: "PROVIDER_ATTEMPTS",
+    maxAttemptsPerJob: 3,
+    maxRequestsPerTick: 3,
+    providerAttemptsStarted: 0,
+  },
+  jobs: [],
+  notifications: [],
+  storage: { mode: "MEMORY", durable: false, schemaVersion: 0, idempotencyKey: "jobId" },
+  notificationStorage: {
+    mode: "MEMORY", durable: false, schemaVersion: 0, idempotencyKey: "notificationId",
+  },
+  authority: "ADVISORY_PREMISE_ANALYSIS_ORCHESTRATION_ONLY",
+  semanticDecisionAuthority: false,
+  certificateAuthority: false,
+  executionAuthority: false,
+  effects: { externalWrites: false, valueMovingActions: false, liveExecutionEnabled: false },
+};
+
+const EMPTY_RULE_EVIDENCE_CLAIMS: StudioProjection["ai"]["ruleEvidenceClaims"] = {
+  schemaVersion: "pmh.rule-evidence-claim-scheduler.v1",
+  enabled: false,
+  configured: false,
+  status: "NEEDS_KEY",
+  tickIntervalMs: null,
+  concurrencyLimit: 3,
+  activeCount: 0,
+  dueCount: 0,
+  pendingCount: 0,
+  leasedCount: 0,
+  retryWaitCount: 0,
+  passedCount: 0,
+  exhaustedCount: 0,
+  supportedCount: 0,
+  contradictedCount: 0,
+  inconclusiveCount: 0,
+  budget: {
+    basis: "PROVIDER_ATTEMPTS",
+    maxAttemptsPerJob: 3,
+    maxRequestsPerTick: 3,
+    providerAttemptsStarted: 0,
+  },
+  jobs: [],
+  storage: {
+    mode: "MEMORY",
+    durable: false,
+    schemaVersion: 0,
+    idempotencyKey: "jobId",
+  },
+  authority: "ADVISORY_EVIDENCE_INTERPRETATION_ORCHESTRATION_ONLY",
   semanticDecisionAuthority: false,
   certificateAuthority: false,
   executionAuthority: false,
@@ -352,7 +587,7 @@ const EMPTY_MARKET_ARCHAEOLOGIST: StudioProjection["ai"]["marketArchaeologist"] 
 
 const EMPTY_SEARCH_LEASE_SCHEDULER: StudioProjection["ai"]["searchLeaseScheduler"] = {
   schemaVersion: "pmh.search-lease-scheduler.v1",
-  algorithmVersion: "pmh.ai-search-leases.v5",
+  algorithmVersion: "pmh.ai-search-leases.v6",
   enabled: false,
   configured: { fastLane: true, deepLane: false },
   status: "IDLE",
@@ -420,9 +655,12 @@ const EMPTY_SEARCH_ISSUE_SCHEDULER: StudioProjection["ai"]["searchIssueScheduler
   status: "IDLE",
   tickIntervalMs: null,
   concurrencyLimit: 3,
+  familyConcurrencyLimit: 1,
   activeCount: 0,
   issueCount: 0,
   enabledIssueCount: 0,
+  defaultManagedIssueCount: 0,
+  supersededIssueCount: 0,
   dueIssueCount: 0,
   unreadNotificationCount: 0,
   performance: {
@@ -465,6 +703,9 @@ const EMPTY_SEARCH_ISSUE_SCHEDULER: StudioProjection["ai"]["searchIssueScheduler
     degradedPassCount: 0,
     insufficientCoverageFailureCount: 0,
     omittedVenueCount: 0,
+    familyRetrievalLeaseCount: 0,
+    familyRetrievalNeighborhoodCount: 0,
+    familyRetrievalFallbackCount: 0,
     agentTraceLeaseCount: 0,
     agentRunCount: 0,
     agentStepCount: 0,
@@ -486,6 +727,7 @@ const EMPTY_SEARCH_ISSUE_SCHEDULER: StudioProjection["ai"]["searchIssueScheduler
     piEscalationRateBps: null,
     economicGatePositiveRateBps: null,
     byIssue: [],
+    byFamily: [],
   },
   issues: [],
   notifications: [],
@@ -562,17 +804,20 @@ const EMPTY_SEARCH_QUOTE_ENRICHMENT: StudioProjection["ai"]["searchQuoteEnrichme
 };
 
 const EMPTY_SEARCH_OUTCOME_ATTRIBUTION: StudioProjection["ai"]["searchOutcomeAttribution"] = {
-  schemaVersion: "pmh.search-outcome-attribution.v1",
+  schemaVersion: "pmh.search-outcome-attribution.v2",
   attributionIdentity: `sha256:${"0".repeat(64)}`,
   sourceSetIdentity: `sha256:${"0".repeat(64)}`,
   sourceArtifactCount: 0,
   measurementBasis: "DISTINCT_PROPOSALS_FROM_PASSED_ISSUE_LEASES",
   issueCount: 0,
+  familyCount: 0,
+  unclassifiedIssueCount: 0,
   attributedLeaseCount: 0,
   attributedProposalCount: 0,
   totalAiProposalCount: 0,
   unattributedAiProposalCount: 0,
   multiIssueProposalCount: 0,
+  multiFamilyProposalCount: 0,
   invalidProposalReferenceCount: 0,
   lifecycleMissingCount: 0,
   attributionCoverageBps: null,
@@ -604,6 +849,7 @@ const EMPTY_SEARCH_OUTCOME_ATTRIBUTION: StudioProjection["ai"]["searchOutcomeAtt
     missingEvidenceCount: 0,
   },
   byIssue: [],
+  byFamily: [],
   modelConfidenceUsed: false,
   authority: "DERIVED_RESEARCH_EVIDENCE_ONLY",
   semanticDecisionAuthority: false,
@@ -1074,6 +1320,32 @@ async function requestReviewNotificationAcknowledgement(
   const result = (await response.json()) as { diagnostic?: string };
   if (!response.ok) {
     throw new Error(result.diagnostic ?? "review notification acknowledgement failed");
+  }
+}
+
+async function requestPremiseNotificationAcknowledgement(
+  notificationId: string,
+): Promise<void> {
+  const response = await fetch(
+    `/api/v1/premise-analysis-notifications/${notificationId}/acknowledgements`,
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) },
+  );
+  const result = (await response.json()) as { diagnostic?: string };
+  if (!response.ok) {
+    throw new Error(result.diagnostic ?? "premise notification acknowledgement failed");
+  }
+}
+
+async function requestProbabilityNotificationAcknowledgement(
+  notificationId: string,
+): Promise<void> {
+  const response = await fetch(
+    `/api/v1/probability-estimation-notifications/${notificationId}/acknowledgements`,
+    { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) },
+  );
+  const result = (await response.json()) as { diagnostic?: string };
+  if (!response.ok) {
+    throw new Error(result.diagnostic ?? "probability notification acknowledgement failed");
   }
 }
 
@@ -1606,6 +1878,13 @@ function Topbar({
           <Sparkles size={10} />
           Shadow only
         </Badge>
+        {studioProjection.projectionWindow.mode === "LIVE_BOUNDED" && (
+          <Badge variant="muted">
+            {studioProjection.projectionWindow.collections.filter(
+              (item) => item.includedCount < item.totalCount,
+            ).length} windowed
+          </Badge>
+        )}
         <span className="header-hash">
           <GitBranch size={13} />
           {studioProjection.identity.stateHash.slice(7, 14)}
@@ -1864,7 +2143,7 @@ function Overview({
           <code>{studioProjection.identity.stateHash}</code>
           <div>
             <Badge variant="muted">{studioProjection.identity.mode}</Badge>
-            <span>pmh.studio-projection.v1</span>
+            <span>{studioProjection.identity.schemaVersion} · {studioProjection.identity.view}</span>
           </div>
         </div>
       </section>
@@ -2913,7 +3192,7 @@ function MarketArchaeologistView() {
         <Metric
           label="Search issues"
           value={`${issueScheduler.enabledIssueCount}`}
-          detail={`${issueScheduler.activeCount}/${issueScheduler.concurrencyLimit} agents running`}
+          detail={`${issueScheduler.activeCount}/${issueScheduler.concurrencyLimit} agents running · ${issueScheduler.supersededIssueCount} retired`}
         />
         <Metric
           label="Semantic graph"
@@ -3187,9 +3466,27 @@ function MarketArchaeologistView() {
               <span><b>{outcomeAttribution.bottlenecks.simulationBlockedCount}</b> simulation blocked</span>
               <span><b>{outcomeAttribution.bottlenecks.missingEvidenceCount}</b> evidence gaps</span>
               {outcomeAttribution.multiIssueProposalCount > 0 && <span><b>{outcomeAttribution.multiIssueProposalCount}</b> multi-issue proposals</span>}
+              {outcomeAttribution.multiFamilyProposalCount > 0 && <span><b>{outcomeAttribution.multiFamilyProposalCount}</b> multi-family proposals</span>}
               {outcomeAttribution.invalidProposalReferenceCount > 0 && <span className="is-warning"><b>{outcomeAttribution.invalidProposalReferenceCount}</b> invalid proposal refs</span>}
               {outcomeAttribution.lifecycleMissingCount > 0 && <span className="is-warning"><b>{outcomeAttribution.lifecycleMissingCount}</b> lifecycle missing</span>}
             </div>
+            {outcomeAttribution.byFamily.length > 0 && (
+              <div className="search-outcome-stages" aria-label="Semantic family yield">
+                {outcomeAttribution.byFamily.map((family) => {
+                  const provider = issuePerformance.byFamily.find(
+                    (item) => item.semanticFamily === family.semanticFamily,
+                  );
+                  return (
+                    <div key={family.semanticFamily}>
+                      <strong>{family.certifiedCount}/{family.proposalCount}</strong>
+                      <span>
+                        {family.semanticFamily.replaceAll("_", " ")} · certified/proposed · {family.reviewedCount} reviewed · {provider?.providerRequestAttemptCount ?? 0} requests · {provider?.familyRetrievalLeaseCount ?? 0} trailheads / {provider?.familyRetrievalNeighborhoodCount ?? 0} neighborhoods / {provider?.familyRetrievalFallbackCount ?? 0} query fallbacks
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           <div className="issue-scheduler-workbench">
@@ -3214,6 +3511,12 @@ function MarketArchaeologistView() {
                         </Badge>
                         <Badge variant="muted">P{issue.priority}</Badge>
                         <Badge variant="muted">{issue.lens}</Badge>
+                        {issue.familyDefinition !== undefined && (
+                          <Badge variant="shadow">{issue.familyDefinition.semanticFamily.replaceAll("_", " ")}</Badge>
+                        )}
+                        {issue.supersededByIssueId !== undefined && issue.supersededByIssueId !== null && (
+                          <Badge variant="warning">SUPERSEDED</Badge>
+                        )}
                       </div>
                       <code>{issue.issueId.slice(7, 14)}</code>
                     </div>
@@ -3222,9 +3525,20 @@ function MarketArchaeologistView() {
                     <div className="search-issue-meta">
                       {issue.candidatePolicy !== undefined && issue.candidatePolicy !== null && (
                         <span className="is-policy">
-                          target {issue.candidatePolicy.allowedRelationKinds.join("/")} · exactly {issue.candidatePolicy.exactListingRefCount} refs
+                          target {issue.candidatePolicy.allowedRelationKinds.join("/")} · {issue.candidatePolicy.exactListingRefCount === undefined
+                            ? `${issue.candidatePolicy.minimumListingRefCount}-${issue.candidatePolicy.maximumListingRefCount}`
+                            : `exactly ${issue.candidatePolicy.exactListingRefCount}`} refs
+                          {issue.candidatePolicy.maxCorpusListings === undefined ? "" : ` · ≤${issue.candidatePolicy.maxCorpusListings} listing context`}
                           {issue.candidatePolicy.requirePositiveGrossHint === true ? " · positive gross gate" : ""}
                         </span>
+                      )}
+                      {issue.familyDefinition !== undefined && (
+                        <span>
+                          falsify: {issue.familyDefinition.falsifiers.join(" · ")} · research premises {issue.familyDefinition.acceptablePremiseKinds.join("/")}
+                        </span>
+                      )}
+                      {issue.supersededByIssueId !== undefined && issue.supersededByIssueId !== null && (
+                        <span>retired default · successor {issue.supersededByIssueId.slice(7, 14)}</span>
                       )}
                       <span>every {issue.cadenceMs / 60_000}m</span>
                       <span>next {new Date(issue.nextRunAt).toLocaleString()}</span>
@@ -3254,7 +3568,10 @@ function MarketArchaeologistView() {
                     <div className="search-issue-actions">
                       <Button
                         variant="outline"
-                        disabled={corpus.listingCount === 0 || issueAction !== null}
+                        disabled={
+                          corpus.listingCount === 0 || issueAction !== null ||
+                          (issue.supersededByIssueId !== undefined && issue.supersededByIssueId !== null)
+                        }
                         onClick={() => void runIssue(issue.issueId)}
                       >
                         {issueAction === `RUN:${issue.issueId}` ? <RefreshCw className="is-spinning" size={13} /> : <Play size={13} />}
@@ -3262,11 +3579,16 @@ function MarketArchaeologistView() {
                       </Button>
                       <Button
                         variant="ghost"
-                        disabled={issueAction !== null}
+                        disabled={
+                          issueAction !== null ||
+                          (issue.supersededByIssueId !== undefined && issue.supersededByIssueId !== null)
+                        }
                         onClick={() => void toggleIssue(issue)}
                       >
                         {issue.enabled ? <Pause size={13} /> : <Play size={13} />}
-                        {issue.enabled ? "Pause" : "Resume"}
+                        {issue.supersededByIssueId !== undefined && issue.supersededByIssueId !== null
+                          ? "Retired"
+                          : issue.enabled ? "Pause" : "Resume"}
                       </Button>
                     </div>
                   </article>
@@ -3557,9 +3879,16 @@ function MarketArchaeologistView() {
                   </code>
                 )}
                 {record.lease.graphContext != null && <code>GRAPH BOUND</code>}
+                {record.fastLane.retrievalPlan !== undefined && (
+                  <code>
+                    FAMILY TRAILHEAD {record.fastLane.retrievalPlan.selectedNeighborhoodRank ?? "QUERY"}/
+                    {record.fastLane.retrievalPlan.neighborhoodCount}
+                  </code>
+                )}
                 {record.lineage.duplicateOfLeaseId !== null && <code>DUPLICATE LINK</code>}
                 {record.deepLane.status === "FAILED" &&
-                  record.lease.algorithmVersion === "pmh.ai-search-leases.v5" &&
+                  (record.lease.algorithmVersion === "pmh.ai-search-leases.v5" ||
+                    record.lease.algorithmVersion === "pmh.ai-search-leases.v6") &&
                   record.deepLane.inputIdentity != null &&
                   (record.deepLane.attempts?.length ?? 0) <
                     (record.lease.budget.maxDeepAttempts ?? 1) && (
@@ -3577,6 +3906,17 @@ function MarketArchaeologistView() {
               </div>
               {record.deepLane.status === "FAILED" && record.deepLane.diagnostic !== null && (
                 <p>{record.deepLane.diagnostic}</p>
+              )}
+              {record.fastLane.retrievalPlan !== undefined && (
+                <p>
+                  Search-only colocation · {record.fastLane.retrievalPlan.semanticFamily} · {record.fastLane.retrievalPlan.selectionReason}
+                  {record.fastLane.retrievalPlan.sharedSignals.length === 0
+                    ? ""
+                    : ` · shared ${record.fastLane.retrievalPlan.sharedSignals.join(", ")}`}
+                  {record.fastLane.retrievalPlan.anchorListingRefs.length === 0
+                    ? ""
+                    : ` · anchors ${record.fastLane.retrievalPlan.anchorListingRefs.join(" + ")}`}
+                </p>
               )}
             </article>
           ))}
@@ -3671,10 +4011,22 @@ function OpportunityLifecycleView() {
   const desk = studioProjection.opportunityLifecycle;
   const semanticReview =
     studioProjection.ai.semanticReview ?? EMPTY_SEMANTIC_REVIEW;
+  const probabilityEstimation =
+    studioProjection.ai.probabilityEstimation ?? EMPTY_PROBABILITY_ESTIMATION;
+  const probabilityScheduler =
+    studioProjection.ai.probabilityEstimationScheduler ??
+      EMPTY_PROBABILITY_ESTIMATION_SCHEDULER;
+  const aiUsage = studioProjection.ai.aiUsage ?? EMPTY_AI_USAGE;
   const reviewAdmission =
     studioProjection.ai.semanticReviewAdmission ?? EMPTY_SEMANTIC_REVIEW_ADMISSION;
   const reviewScheduler =
     studioProjection.ai.semanticReviewScheduler ?? EMPTY_SEMANTIC_REVIEW_SCHEDULER;
+  const premiseAnalysis =
+    studioProjection.ai.premiseAnalysis ?? EMPTY_PREMISE_ANALYSIS;
+  const premiseScheduler =
+    studioProjection.ai.premiseAnalysisScheduler ?? EMPTY_PREMISE_ANALYSIS_SCHEDULER;
+  const ruleEvidenceClaims =
+    studioProjection.ai.ruleEvidenceClaims ?? EMPTY_RULE_EVIDENCE_CLAIMS;
   const reviewAttention =
     studioProjection.ai.reviewAttention ?? EMPTY_REVIEW_ATTENTION;
   const economicTriage =
@@ -3710,6 +4062,9 @@ function OpportunityLifecycleView() {
     Readonly<Record<string, string>>
   >({});
   const [reviewNotificationAction, setReviewNotificationAction] = useState<string | null>(null);
+  const [premiseNotificationAction, setPremiseNotificationAction] = useState<string | null>(null);
+  const [probabilityNotificationAction, setProbabilityNotificationAction] =
+    useState<string | null>(null);
   const proposals = new Map(
     studioProjection.ai.marketArchaeologist.records.flatMap((record) =>
       (record.report?.result.proposals ?? []).map((proposal) => [
@@ -3737,6 +4092,24 @@ function OpportunityLifecycleView() {
       await requestReviewNotificationAcknowledgement(notificationId);
     } finally {
       setReviewNotificationAction(null);
+    }
+  }
+
+  async function acknowledgePremiseNotification(notificationId: string): Promise<void> {
+    setPremiseNotificationAction(notificationId);
+    try {
+      await requestPremiseNotificationAcknowledgement(notificationId);
+    } finally {
+      setPremiseNotificationAction(null);
+    }
+  }
+
+  async function acknowledgeProbabilityNotification(notificationId: string): Promise<void> {
+    setProbabilityNotificationAction(notificationId);
+    try {
+      await requestProbabilityNotificationAcknowledgement(notificationId);
+    } finally {
+      setProbabilityNotificationAction(null);
     }
   }
 
@@ -3887,6 +4260,19 @@ function OpportunityLifecycleView() {
     }
   }
 
+  const usagePurposes = [...aiUsage.byPurpose].sort((left, right) => {
+    const leftTokens = tokenMagnitude(left.tokens.totalTokens);
+    const rightTokens = tokenMagnitude(right.tokens.totalTokens);
+    return leftTokens === rightTokens
+      ? left.key.localeCompare(right.key)
+      : leftTokens > rightTokens ? -1 : 1;
+  });
+  const recentUsageHours = aiUsage.hourly.slice(-12);
+  const maximumHourlyCalls = Math.max(
+    1,
+    ...recentUsageHours.map((bucket) => Number(bucket.invocationCount)),
+  );
+
   return (
     <section className="page-section lifecycle-page">
       <div className="page-heading lifecycle-heading">
@@ -3905,6 +4291,11 @@ function OpportunityLifecycleView() {
             REVIEWER {semanticReview.configured ? "READY" : "NEEDS KEY"}
           </Badge>
           <Badge variant="shadow">DEFAULT · HUMAN APPROVAL</Badge>
+          <Badge variant={probabilityEstimation.configured ? "shadow" : "warning"}>
+            ESTIMATORS {probabilityEstimation.configured
+              ? probabilityScheduler.enabled ? "AUTO" : "MANUAL"
+              : "NEED KEY"}
+          </Badge>
           <Badge variant="warning">LIVE ROUTE ABSENT</Badge>
         </div>
       </div>
@@ -3919,11 +4310,212 @@ function OpportunityLifecycleView() {
           detail={`${semanticReview.storage.durable ? "SQLite" : "memory"} · advisory / decided`}
         />
         <Metric
+          label="Probability agents"
+          value={`${probabilityScheduler.freshBoundCount}/${probabilityScheduler.caseCount}`}
+          detail={`fresh bounds / cases · ${probabilityScheduler.storage.jobs.durable ? "SQLite" : "memory"}`}
+        />
+        <Metric
           label="Public evidence"
           value={`${simulationMaterializer.retainedRawSourceCount}`}
           detail={`${simulationMaterializer.storage.durable ? "SQLite WAL" : "memory"} · content addressed`}
         />
       </div>
+
+      <section className="attention-queue" aria-label="Probability estimation agents">
+        <div className="attention-queue-heading">
+          <div>
+            <Gauge size={15} />
+            <div>
+              <strong>Probability estimation agents</strong>
+              <span>Role-separated intervals · counter-scenario first · abstention is valid</span>
+            </div>
+          </div>
+          <Badge variant={probabilityScheduler.unreadNotificationCount > 0 ? "warning" : "shadow"}>
+            {probabilityScheduler.unreadNotificationCount > 0
+              ? `${probabilityScheduler.unreadNotificationCount} UNREAD`
+              : "ESTIMATE ONLY"}
+          </Badge>
+        </div>
+        <div className="attention-queue-stats">
+          <div><strong>{probabilityScheduler.activeCount}</strong><span>active roles</span></div>
+          <div><strong>{probabilityScheduler.dueCount}</strong><span>due</span></div>
+          <div><strong>{probabilityScheduler.passedCount}</strong><span>intervals</span></div>
+          <div><strong>{probabilityScheduler.boundReadyCount}</strong><span>bounds ready</span></div>
+          <div><strong>{probabilityScheduler.abstainedCount}</strong><span>abstained</span></div>
+          <div><strong>{probabilityScheduler.blockedEvidenceCount}</strong><span>evidence blocked</span></div>
+        </div>
+        <div className="attention-item-list">
+          {probabilityScheduler.notifications.filter((item) => item.status === "UNREAD")
+            .slice(0, 4).map((notification) => (
+              <article key={notification.notificationId}>
+                <div className="attention-item-topline">
+                  <Badge variant={notification.kind === "BOUND_READY" ? "verified" : "warning"}>
+                    {notification.kind.replaceAll("_", " ")}
+                  </Badge>
+                  <time>{new Date(notification.createdAt).toLocaleString()}</time>
+                </div>
+                <strong>{notification.title}</strong>
+                <p>{notification.summary}</p>
+                <Button
+                  variant="ghost"
+                  disabled={probabilityNotificationAction === notification.notificationId}
+                  onClick={() => void acknowledgeProbabilityNotification(notification.notificationId)}
+                >
+                  {probabilityNotificationAction === notification.notificationId
+                    ? "Acknowledging…"
+                    : "Acknowledge"}
+                </Button>
+              </article>
+            ))}
+          {probabilityScheduler.bounds.slice(0, 4).map((bound) => (
+            <article key={bound.artifactHash}>
+              <div className="attention-item-topline">
+                <Badge variant={Date.parse(bound.expiresAt) > Date.now() ? "shadow" : "muted"}>
+                  {Date.parse(bound.expiresAt) > Date.now() ? "BOUND FRESH" : "BOUND STALE"}
+                </Badge>
+                <Badge variant="muted">{bound.estimates.length} ROLES</Badge>
+              </div>
+              <strong>Adverse states {bound.adverseStateIds.join(" + ")} ≤ {bound.epsilonPpm} ppm</strong>
+              <p>Conservative envelope {bound.lowerPpm}–{bound.epsilonPpm} ppm; expires {new Date(bound.expiresAt).toLocaleString()}.</p>
+              <small>Uncalibrated estimate · price/risk compiler required · not guaranteed profit</small>
+            </article>
+          ))}
+          {probabilityEstimation.records.length === 0 && probabilityScheduler.bounds.length === 0 &&
+          probabilityScheduler.notifications.length === 0 ? (
+            <div className="review-operation-empty">
+              <strong>No probability estimates retained yet</strong>
+              <span>Probabilistic semantic reviews enter independent reference-class, causal, and skeptical roles here.</span>
+            </div>
+          ) : probabilityEstimation.records.slice(0, 6).map((record) => (
+            <article key={record.runId}>
+              <div className="attention-item-topline">
+                <Badge variant={record.status === "PASS" ? "shadow" : record.status === "ABSTAINED" ? "muted" : "warning"}>
+                  {record.status}
+                </Badge>
+                <Badge variant="muted">{record.role.replaceAll("_", " ")}</Badge>
+              </div>
+              <strong>
+                {record.estimate === null
+                  ? "No numeric bound submitted"
+                  : `${record.estimate.lowerPpm}–${record.estimate.upperPpm} ppm adverse-state probability`}
+              </strong>
+              <p>{record.rationale ?? record.diagnostic ?? "Agent run is in progress."}</p>
+              <div className="attention-item-facts">
+                <span>{record.counterScenarios.length} counter-scenario{record.counterScenarios.length === 1 ? "" : "s"}</span>
+                <span>{record.trace?.providerRequestAttemptCount ?? 0} requests</span>
+                <span>{record.adverseStateIds.join(" + ")} adverse state{record.adverseStateIds.length === 1 ? "" : "s"}</span>
+              </div>
+              <small>Not confidence · not guaranteed profit · no certificate or execution authority</small>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="attention-queue" aria-label="AI token usage ledger">
+        <div className="attention-queue-heading">
+          <div>
+            <Activity size={15} />
+            <div>
+              <strong>AI usage ledger</strong>
+              <span>Purpose × role × model × outcome · provider-reported tokens only</span>
+            </div>
+          </div>
+          <Badge variant={aiUsage.storage.durable ? "verified" : "muted"}>
+            {aiUsage.storage.durable ? "SQLITE DURABLE" : "MEMORY"}
+          </Badge>
+        </div>
+        <div className="attention-queue-stats">
+          <div>
+            <strong>{formatTokenCount(aiUsage.totals.invocationCount)}</strong>
+            <span>invocations</span>
+          </div>
+          <div>
+            <strong>{formatTokenCount(aiUsage.totals.tokens.totalTokens)}</strong>
+            <span>reported total tokens</span>
+          </div>
+          <div>
+            <strong>{formatTokenCount(aiUsage.totals.tokens.inputTokens)}</strong>
+            <span>input</span>
+          </div>
+          <div>
+            <strong>{formatTokenCount(aiUsage.totals.tokens.outputTokens)}</strong>
+            <span>output</span>
+          </div>
+          <div>
+            <strong>{formatTokenCount(aiUsage.totals.tokens.reasoningTokens)}</strong>
+            <span>reasoning</span>
+          </div>
+          <div>
+            <strong>{formatTokenCount(aiUsage.totals.tokens.cacheReadTokens)}</strong>
+            <span>cache read</span>
+          </div>
+        </div>
+        {recentUsageHours.length > 0 && (
+          <div
+            className="usage-hourly-trend"
+            aria-label="AI invocation frequency by UTC hour"
+            style={{
+              gridTemplateColumns:
+                `repeat(${Math.max(1, recentUsageHours.length)}, minmax(18px, 1fr))`,
+            }}
+          >
+            {recentUsageHours.map((bucket) => {
+              const calls = Number(bucket.invocationCount);
+              return (
+                <div key={bucket.bucket} title={`${bucket.bucket}: ${bucket.invocationCount} calls, ${formatTokenCount(bucket.tokens.totalTokens)} tokens`}>
+                  <span>{new Date(bucket.bucket).getUTCHours().toString().padStart(2, "0")}Z</span>
+                  <i style={{ height: `${Math.max(8, Math.round((calls / maximumHourlyCalls) * 44))}px` }} />
+                  <strong>{bucket.invocationCount}</strong>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="attention-item-list">
+          {usagePurposes.length === 0 ? (
+            <div className="review-operation-empty">
+              <strong>No AI usage retained yet</strong>
+              <span>The next AI SDK or Pi invocation will appear here; unavailable usage is not counted as zero.</span>
+            </div>
+          ) : usagePurposes.map((purpose) => (
+            <article key={purpose.key}>
+              <div className="attention-item-topline">
+                <Badge variant="shadow">{purpose.key.replaceAll("_", " ")}</Badge>
+                <span>{formatTokenCount(purpose.invocationCount)} calls</span>
+              </div>
+              <strong>{formatTokenCount(purpose.tokens.totalTokens)} reported tokens</strong>
+              <p>
+                {formatTokenCount(purpose.tokens.inputTokens)} input · {formatTokenCount(purpose.tokens.outputTokens)} output · {formatTokenCount(purpose.tokens.reasoningTokens)} reasoning · {formatTokenCount(purpose.tokens.cacheReadTokens)} cache read
+              </p>
+              <div className="attention-item-facts">
+                <span>{formatTokenCount(purpose.durableEffectCount)} durable effects</span>
+                <span>{purpose.completeCount} complete</span>
+                <span>{purpose.partialCount} partial</span>
+                <span>{purpose.unavailableCount} unavailable</span>
+              </div>
+            </article>
+          ))}
+          {aiUsage.recentEvents.slice(0, 8).map((event) => (
+            <article key={event.eventId}>
+              <div className="attention-item-topline">
+                <Badge variant={event.outcome === "SUCCEEDED" ? "verified" : event.outcome === "ABSTAINED" ? "muted" : "warning"}>
+                  {event.outcome}
+                </Badge>
+                <time>{new Date(event.occurredAt).toLocaleString()}</time>
+              </div>
+              <strong>{event.purpose.replaceAll("_", " ")} · {event.role ?? "unspecified role"}</strong>
+              <p>{event.provider}/{event.model} · {formatTokenCount(event.tokens.totalTokens)} tokens · {event.durationMs} ms</p>
+              <small>{event.coverage} coverage · {event.providerRequestCount ?? "unknown"} provider requests · prompts and outputs not retained</small>
+            </article>
+          ))}
+        </div>
+        <div className="case-authority-lock archaeology-authority-lock">
+          <CircleOff size={15} />
+          <span>
+            Missing provider metadata stays unknown. Pi is partial until its CLI exposes exact token usage; currency cost is intentionally absent until pricing is versioned.
+          </span>
+        </div>
+      </section>
 
       <section className="attention-queue economic-frontier" aria-label="Pre-review economic frontier">
         <div className="attention-queue-heading">
@@ -4020,6 +4612,66 @@ function OpportunityLifecycleView() {
             Auto lane: two distinct listings plus {reviewAdmission.supportedRelations.join(" / ")}. Manual advisory review remains available for every retained proposal.
           </span>
           <code>{reviewAdmission.contentHash.slice(0, 22)}…</code>
+        </div>
+      </section>
+
+      <section className="attention-queue" aria-label="Agent rule evidence claims">
+        <div className="attention-queue-heading">
+          <div>
+            <BookOpenCheck size={15} />
+            <div>
+              <strong>Agent rule-evidence claims</strong>
+              <span>
+                One durable interpretation job per requirement × captured document · exact passage offsets verified before semantic reuse
+              </span>
+            </div>
+          </div>
+          <Badge variant={ruleEvidenceClaims.exhaustedCount > 0 ? "warning" : ruleEvidenceClaims.passedCount > 0 ? "verified" : "muted"}>
+            {ruleEvidenceClaims.status.replaceAll("_", " ")}
+          </Badge>
+        </div>
+        <div className="attention-queue-stats">
+          <div><strong>{ruleEvidenceClaims.dueCount}</strong><span>due</span></div>
+          <div><strong>{ruleEvidenceClaims.leasedCount}/{ruleEvidenceClaims.concurrencyLimit}</strong><span>leased</span></div>
+          <div><strong>{ruleEvidenceClaims.supportedCount}</strong><span>supports</span></div>
+          <div><strong>{ruleEvidenceClaims.contradictedCount}</strong><span>contradicts</span></div>
+          <div><strong>{ruleEvidenceClaims.inconclusiveCount}</strong><span>inconclusive</span></div>
+          <div><strong>{ruleEvidenceClaims.exhaustedCount}</strong><span>exhausted</span></div>
+        </div>
+        <div className="attention-item-list">
+          {ruleEvidenceClaims.jobs.length === 0 ? (
+            <div className="review-operation-empty">
+              <strong>No rule-evidence interpretation jobs retained</strong>
+              <span>Captured documents are fanned out across proposal-local evidence requirements here.</span>
+            </div>
+          ) : ruleEvidenceClaims.jobs.slice(0, 8).map((job) => (
+            <article key={job.jobId}>
+              <div className="attention-item-topline">
+                <Badge variant={job.status === "PASS" ? "verified" : job.status === "EXHAUSTED" ? "warning" : "muted"}>
+                  {job.status.replaceAll("_", " ")}
+                </Badge>
+                <Badge variant="shadow">{job.requirement.kind.replaceAll("_", " ")}</Badge>
+                <time>{new Date(job.updatedAt).toLocaleString()}</time>
+              </div>
+              <strong>{job.requirement.claim}</strong>
+              <p>{job.diagnostic ?? "Exact captured passage lineage retained; awaiting or completed advisory interpretation."}</p>
+              <div className="attention-item-facts">
+                <span>attempt {job.attemptCount}/{job.maxAttempts}</span>
+                <span>doc {job.documentId.slice(7, 14)}</span>
+                <span>requirement {job.requirementId.slice(7, 14)}</span>
+              </div>
+              <small>Claim text is not exposed here; enriched semantic review consumes only verified, content-addressed claim artifacts.</small>
+            </article>
+          ))}
+        </div>
+        <div className="attention-authority-lock">
+          <CircleOff size={14} />
+          <span>
+            Tool-mediated reading is advisory: exact quote validation prevents fabricated passages, while semantic decisions and certificates remain separate gates.
+          </span>
+          <code>
+            {ruleEvidenceClaims.storage.durable ? "SQLite WAL" : "memory"} · {ruleEvidenceClaims.budget.providerAttemptsStarted} attempts
+          </code>
         </div>
       </section>
 
@@ -4121,7 +4773,7 @@ function OpportunityLifecycleView() {
           <div><strong>{reviewScheduler.duplicateScopeCount}</strong><span>duplicate calls withheld</span></div>
           <div><strong>{reviewScheduler.historicalRedundantPassCount}</strong><span>historical redundant passes</span></div>
           <div>
-            <strong>{reviewScheduler.bundledJobCount}/{reviewScheduler.jobs.length}</strong>
+            <strong>{reviewScheduler.bundledJobCount}/{reviewScheduler.scopedJobCount}</strong>
             <span>evidence bundled · {reviewScheduler.legacyEvidenceDebtCount} legacy debt</span>
           </div>
           <div><strong>{reviewScheduler.passedCount}</strong><span>reviewed</span></div>
@@ -4181,6 +4833,109 @@ function OpportunityLifecycleView() {
               </article>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="review-operations" aria-label="Hidden premise analysis">
+        <div className="review-operations-heading">
+          <div>
+            <GitBranch size={15} />
+            <div>
+              <strong>Agent-native hidden-premise audit</strong>
+              <span>
+                {premiseScheduler.enabled
+                  ? `${premiseScheduler.tickIntervalMs}ms tick · SQLite ${premiseScheduler.storage.durable ? "WAL" : "off"}`
+                  : "automatic dispatch disabled · semantic premises remain inspectable"}
+              </span>
+            </div>
+          </div>
+          <Badge variant={premiseScheduler.exactEligibleCount > 0 ? "verified" : "muted"}>
+            {premiseScheduler.exactEligibleCount} EXACT · {premiseScheduler.unreadNotificationCount} UNREAD
+          </Badge>
+        </div>
+        <div className="review-operations-stats">
+          <div><strong>{premiseScheduler.dueCount}</strong><span>due</span></div>
+          <div><strong>{premiseScheduler.leasedCount}/{premiseScheduler.concurrencyLimit}</strong><span>leased</span></div>
+          <div><strong>{premiseScheduler.retryWaitCount}</strong><span>retry wait</span></div>
+          <div><strong>{premiseScheduler.passedCount}</strong><span>audited</span></div>
+          <div><strong>{premiseScheduler.exactEligibleCount}</strong><span>closed logic</span></div>
+          <div><strong>{premiseScheduler.researchOnlyCount}</strong><span>premise-dependent</span></div>
+          <div><strong>{premiseScheduler.attributedJobCount}</strong><span>review-attributed</span></div>
+          <div><strong>{premiseScheduler.legacyAttributionDebtCount}</strong><span>legacy debt</span></div>
+          <div><strong>{premiseScheduler.exhaustedCount}</strong><span>exhausted</span></div>
+          <div>
+            <strong>{premiseScheduler.budget.providerAttemptsStarted}</strong>
+            <span>provider attempts · {premiseScheduler.budget.maxAttemptsPerJob}/job</span>
+          </div>
+        </div>
+        <div className="review-operations-body">
+          <div className="review-job-list">
+            {premiseScheduler.jobs.length === 0 ? (
+              <div className="review-operation-empty">
+                <strong>No premise-audit jobs retained</strong>
+                <span>Passed 2–4 market semantic constraints seed one scope-bound Agent audit.</span>
+              </div>
+            ) : premiseScheduler.jobs.slice(0, 8).map((job) => {
+              const record = premiseAnalysis.records.find((item) => item.analysisId === job.analysisId);
+              const relation = record?.analysis?.relation;
+              return (
+                <article key={job.jobId}>
+                  <Badge variant={job.exactCompilerAdmission === "ELIGIBLE" ? "verified" : job.status === "EXHAUSTED" ? "warning" : "muted"}>
+                    {job.status.replaceAll("_", " ")}
+                  </Badge>
+                  <div>
+                    <strong>
+                      {relation === undefined
+                        ? proposals.get(job.proposalId)?.statement ?? "Scoped hidden-premise audit"
+                        : `${relation.classification.replaceAll("_", " ")} · ${relation.exactCompilerAdmission}`}
+                    </strong>
+                    <span>
+                      {record?.analysis?.premises.length ?? 0} premise artifact
+                      {(record?.analysis?.premises.length ?? 0) === 1 ? "" : "s"}
+                      {relation ? ` · ${relation.evaluatedStates.length} states replayed` : ""}
+                      {relation?.blocker ? ` · ${relation.blocker.replaceAll("_", " ")}` : ""}
+                    {` · attempt ${job.attemptCount}/${job.maxAttempts}`}
+                    {job.schemaVersion === "pmh.premise-analysis-job.v2"
+                      ? ` · ${job.admissionLane!.replaceAll("_", " ")} · ${job.issueIds!.length} issue${job.issueIds!.length === 1 ? "" : "s"}`
+                      : " · LEGACY UNATTRIBUTED"}
+                    </span>
+                  </div>
+                  <code>{job.evidenceScopeIdentity.slice(7, 19)}…</code>
+                </article>
+              );
+            })}
+          </div>
+          <div className="review-notification-list">
+            {premiseScheduler.notifications.length === 0 ? (
+              <div className="review-operation-empty">
+                <strong>Premise inbox is quiet</strong>
+                <span>Exact-ready, research-retained, and exhausted Agent audits notify here.</span>
+              </div>
+            ) : premiseScheduler.notifications.slice(0, 6).map((notification) => (
+              <article className={notification.status === "READ" ? "is-read" : undefined} key={notification.notificationId}>
+                <div>
+                  <Badge variant={notification.kind === "EXACT_RELATION_READY" ? "verified" : notification.kind === "JOB_EXHAUSTED" ? "warning" : "shadow"}>
+                    {notification.kind.replaceAll("_", " ")}
+                  </Badge>
+                  <time>{new Date(notification.createdAt).toLocaleString()}</time>
+                </div>
+                <strong>{notification.title}</strong>
+                <p>{notification.summary}</p>
+                {notification.status === "UNREAD" && (
+                  <button
+                    type="button"
+                    disabled={premiseNotificationAction === notification.notificationId}
+                    onClick={() => void acknowledgePremiseNotification(notification.notificationId)}
+                  >Acknowledge</button>
+                )}
+              </article>
+            ))}
+          </div>
+        </div>
+        <div className="attention-authority-lock">
+          <CircleOff size={14} />
+          <span>LLM tools expose premises and expressions; only replayed truth states can enter the exact compiler.</span>
+          <code>{premiseAnalysis.interpreterIdentity.slice(0, 22)}…</code>
         </div>
       </section>
 

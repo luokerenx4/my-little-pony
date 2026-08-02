@@ -1052,8 +1052,8 @@ describe("AI-native search lease scheduler", () => {
       retainedCorpusCount: 1,
       recoverableIssuedCount: 0,
       missingCorpusIssuedCount: 0,
-      storage: { schemaVersion: 18 },
-      corpusStorage: { schemaVersion: 18, idempotencyKey: "snapshotIdentity" },
+      storage: { schemaVersion: 26 },
+      corpusStorage: { schemaVersion: 26, idempotencyKey: "snapshotIdentity" },
     });
     store.close();
   });
@@ -1615,6 +1615,7 @@ describe("AI-native search lease scheduler", () => {
 
   it("rejects a context that represents fewer venues than its v3 minimum before AI", async () => {
     const runFast = vi.fn(async (task: DiscoveryTask) => runRecord(task));
+    let nowMs = Date.parse("2026-08-02T00:00:00.000Z");
     const body = Object.freeze({
       schemaVersion: "pmh.catalog-context-coverage.v1" as const,
       status: "FULL" as const,
@@ -1639,6 +1640,7 @@ describe("AI-native search lease scheduler", () => {
       }),
       maxPiInvocations: 0,
       runFast,
+      now: () => nowMs++,
     });
 
     const record = await scheduler.begin(
@@ -1680,7 +1682,7 @@ describe("AI-native search lease scheduler", () => {
     expect(scheduler.projection().runCount).toBe(4);
   });
 
-  it("replays historical v1-v4 leases but does not let them suppress a v5 scan", async () => {
+  it("replays historical v1-v4 leases but does not let them suppress a v6 scan", async () => {
     const current = snapshot("historical-v1");
     const completed = await new SearchLeaseScheduler({
       context,
@@ -1775,13 +1777,13 @@ describe("AI-native search lease scheduler", () => {
       "SCHEDULE",
     ).promise;
     expect(currentRecord.lease).toMatchObject({
-      algorithmVersion: "pmh.ai-search-leases.v5",
+      algorithmVersion: "pmh.ai-search-leases.v6",
       lens: "EQUIVALENCE",
     });
     expect(scheduler.projection().records.map(
       (record) => record.lease.algorithmVersion,
     )).toEqual([
-      "pmh.ai-search-leases.v5",
+      "pmh.ai-search-leases.v6",
       "pmh.ai-search-leases.v2",
       "pmh.ai-search-leases.v1",
     ]);
