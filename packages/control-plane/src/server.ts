@@ -159,6 +159,8 @@ import {
   buildWorldStateMechanismPrototypeCampaignPreview,
   resolveWorldStateMechanismPrototypeCampaignInput,
 } from "./world-state-mechanism-prototype-campaign.js";
+import { materializeMechanismPrototypeExplorationProjection } from
+  "./mechanism-prototype-guided-exploration.js";
 import {
   observeWorldStateMechanismRoutes,
   worldStateMechanismSubjectBindingReviewCoversRoute,
@@ -4253,6 +4255,19 @@ export function createControlPlane(options?: {
     const wakes = worldStateMechanismWakeStore
       ?.loadWorldStateMechanismWakes(2_048) ?? [];
     const routes = compileConsolidatedWorldStateMechanismRoutes(proposals);
+    const prototypeProposals = worldStateMechanismPrototypeStore
+      ?.loadWorldStateMechanismPrototypeProposals(512) ?? [];
+    const prototypeInputs = worldStateMechanismPrototypeStore
+      ?.loadWorldStateMechanismPrototypeInputs(2_048) ?? [];
+    const corpus = catalogObservationDesk.corpus();
+    const mechanismPrototypeExploration = corpus.listingCount === 0
+      ? null
+      : materializeMechanismPrototypeExplorationProjection({
+          prototypes: prototypeProposals,
+          prototypeInputs,
+          corpus,
+          ontology: buildMarketOntologySnapshot(corpus),
+        });
     const bindingCases = worldStateSubjectBindingResearchCases;
     const bindingAssessments = worldStateSubjectBindingResearchStore
       ?.loadWorldStateSubjectBindingAssessments(512) ?? [];
@@ -4308,8 +4323,7 @@ export function createControlPlane(options?: {
         abstainedCount: worldStateMechanismPrototypeResearchCases.filter((item) =>
           item.state === "ABSTAINED"
         ).length,
-        retainedProposalCount: worldStateMechanismPrototypeStore
-          ?.loadWorldStateMechanismPrototypeProposals(512).length ?? 0,
+        retainedProposalCount: prototypeProposals.length,
         retainedAbstentionCount: worldStateMechanismPrototypeStore
           ?.loadWorldStateMechanismPrototypeAbstentions(512).length ?? 0,
         automaticDispatch: false as const,
@@ -4334,6 +4348,7 @@ export function createControlPlane(options?: {
             campaignEligible: item.campaignEligible,
           }))),
       }),
+      mechanismPrototypeExploration,
       familyScorecards: buildWorldStateMechanismFamilyScorecards({
         routes,
         counterexamples,

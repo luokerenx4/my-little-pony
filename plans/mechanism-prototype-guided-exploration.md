@@ -58,17 +58,37 @@ contract is not silently widened to claim prototype transfer.
 
 ## Phase 1 — provider-free lens substrate
 
-- [ ] Define strict content-addressed exploration-brief and exact input-revision
+- [x] Define strict content-addressed exploration-brief and exact input-revision
   contracts over an accepted prototype, its source input, current corpus, known
   listing exclusions, and one variation axis.
-- [ ] Materialize a small differentiated portfolio rather than four duplicate
+- [x] Materialize a small differentiated portfolio rather than four duplicate
   prompts; collapse axes that have no independently testable effect in the
   current corpus.
-- [ ] Derive bounded lexical trailheads from prototype signals and role values,
+- [x] Derive bounded lexical trailheads from prototype signals and role values,
   while retaining zero-result neighborhoods and never using receive time alone
   as semantic input novelty.
 - [ ] Project eligible, attempted, successful, exhausted, novel-family and
   known/unknown usage counts with zero provider or model calls.
+
+Live provider-free qualification binds the accepted prototype to four distinct
+variation axes over the current 799-listing anonymous corpus. The first broad
+ranking incorrectly promoted proper-name collisions such as Gavin
+Newsom/Gavin Williams and Kamala Harris/Michael Harris. Reusing the existing
+proper-name-neighbor ambiguity gate removed those false variations. Requiring
+different titles to expose component and aggregate roles then removed same-
+topic interval and outcome-family pairs. The remaining deterministic seed is a
+useful counterexample: a New Hampshire Senate-seat outcome paired with U.S.
+House control breaks institution-family transfer. It is retained only under
+`COUNTEREXAMPLE_FRONTIER`; the three positive-search axes truthfully have zero
+programmatic seeds.
+
+Zero seed does not make a lens Agent-ineligible. Doing so would make code the
+discovery authority and relegate AI to checking pre-enumerated pairs. All four
+lenses remain manual research assignments over the exact corpus; `seeded` and
+`eligible` are independent states. A refresh that changed only receive time,
+raw hash and indicative prices produced a new auditable input revision while
+preserving the price-independent semantic input identity, so it cannot silently
+repurchase the same research.
 
 ## Phase 2 — Agent-first exploration loop
 
