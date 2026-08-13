@@ -67,7 +67,7 @@ contract is not silently widened to claim prototype transfer.
 - [x] Derive bounded lexical trailheads from prototype signals and role values,
   while retaining zero-result neighborhoods and never using receive time alone
   as semantic input novelty.
-- [ ] Project eligible, attempted, successful, exhausted, novel-family and
+- [x] Project eligible, attempted, successful, exhausted, novel-family and
   known/unknown usage counts with zero provider or model calls.
 
 Live provider-free qualification binds the accepted prototype to four distinct
@@ -92,16 +92,16 @@ repurchase the same research.
 
 ## Phase 2 — Agent-first exploration loop
 
-- [ ] Add isolated tools to read the lens, search the exact assigned corpus,
+- [x] Add isolated tools to read the lens, search the exact assigned corpus,
   inspect bounded listing evidence, submit a novel trailhead, or record
   exhaustion.
-- [ ] Require every positive result to bind two or more exact listing refs,
+- [x] Require every positive result to bind two or more exact listing refs,
   name the tested variation axis, explain the structural analogy, identify the
   surface difference, and apply the prototype's transfer tests and
   counter-scenarios.
-- [ ] Reject source-member refs, wholly source-member route families, unknown
+- [x] Reject source-member refs, wholly source-member route families, unknown
   refs, uninspected refs, and results that merely restate the prototype label.
-- [ ] Persist full result/exhaustion bodies, exact input revision, run and tool
+- [x] Persist full result/exhaustion bodies, exact input revision, run and tool
   lineage, searched neighborhoods, and repair friction in additive SQLite.
 - [ ] Route accepted trailheads into the existing heuristic/ontology research
   ecology with search-routing authority only; semantic admission remains a
@@ -109,15 +109,35 @@ repurchase the same research.
 
 ## Phase 3 — bounded operation and selection
 
-- [ ] Add a paused, manual-only, once-per-lens campaign preview with one exact
+- [x] Add a paused, manual-only, once-per-lens campaign preview with one exact
   candidate, one concurrent run, and explicit request/token/time ceilings.
-- [ ] Expose the prototype → exploration lens → trailhead/exhaustion chain and
+- [x] Expose the prototype → exploration lens → trailhead/exhaustion chain and
   separate prototype-authoring versus exploration cost in Studio.
 - [ ] Qualify one Terra/high specimen and pause immediately after its terminal
   observation.
 - [ ] Compare a discovered route's family/taxonomy distance or the retained
   exhaustion against the two source members, then choose `ADOPT`,
   `PARTIAL_ADOPT`, `HOLD`, or `ABANDON` for recurring attention allocation.
+
+The Agent-first loop is now runnable without widening free-text authority. Five
+first-party tools expose the exact lens, exact-corpus search, bounded listing
+inspection, trailhead retention, and evidence-bound exhaustion. SQLite schema
+55 durably retains exact input revisions, positives, and negatives; restart
+reconciliation repairs a partially applied v55 migration even when the database
+version was advanced before the three tables existed. This regression was
+observed on the live 3.3 GB volume and repaired without deleting or rebuilding
+evidence.
+
+Campaign selection freezes one semantic input into a content-addressed
+campaign lineage. Provider price/raw/receive-time refreshes may create a newer
+auditable input revision, but a selected run still loads the original retained
+revision and its exact corpus snapshot. The Studio now shows all four lenses,
+distinguishes programmatic seeds from Agent-only frontiers, exposes retained
+positive/negative counts and attributed usage, and can create only a paused
+campaign. Read qualification over the live corpus reports four eligible lenses,
+one seed and three zero-seed frontiers with no provider or model call. Visual
+qualification at the live Studio port shows a coherent two-column exploration
+desk without console errors.
 
 ## Selection gates
 

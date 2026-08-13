@@ -4,11 +4,24 @@ import {
   assertMechanismPrototypeExplorationInputRevision,
   buildMarketCorpusSnapshot,
   buildMarketOntologySnapshot,
+  buildAgentRun,
+  activateAgentCampaign,
+  buildMechanismPrototypeExplorationCampaignPreview,
+  buildPausedAgentCampaign,
+  buildDefaultAgentRuntimePortfolio,
+  defaultAiRuntimeConfiguration,
+  resolveMechanismPrototypeExplorationCampaignInput,
+  buildExecutionProfile,
+  buildAgentRuntimeDefinition,
+  buildCredentialBinding,
+  buildModelProfile,
   buildWorldStateMechanismProposal,
   buildWorldStateMechanismPrototypeProposal,
   compileConsolidatedWorldStateMechanismRoutes,
   materializeMechanismPrototypeExplorationProjection,
   materializeWorldStateMechanismPrototypeResearchCases,
+  MechanismPrototypeExplorationAgentToolHost,
+  MECHANISM_PROTOTYPE_EXPLORATION_TOOL_PROTOCOL,
   type DiscoveryCatalogListing,
   type WorldStateMechanismProposal,
 } from "../src/index.js";
@@ -250,5 +263,217 @@ describe("mechanism-prototype-guided exploration substrate", () => {
       corpus: snapshot,
       ontology: buildMarketOntologySnapshot(snapshot),
     })).toThrow("source prototype input is unavailable");
+  });
+
+  it("binds one paused campaign to an exact semantic input and never dispatches it", () => {
+    const { sourceInput, prototype } = acceptedPrototype();
+    const snapshot = corpus();
+    const projection = materializeMechanismPrototypeExplorationProjection({
+      prototypes: [prototype], prototypeInputs: [sourceInput], corpus: snapshot,
+      ontology: buildMarketOntologySnapshot(snapshot),
+    });
+    const portfolio = buildDefaultAgentRuntimePortfolio(defaultAiRuntimeConfiguration(NOW));
+    const route = portfolio.workloadRoutes.find((item) =>
+      item.taskKind === "MECHANISM_PROTOTYPE_EXPLORATION"
+    )!;
+    const profile = portfolio.executionProfiles.find((item) =>
+      item.executionProfileId === route.executionProfileId
+    )!;
+    const execution = {
+      ...portfolio, campaigns: [], tasks: projection.lenses.map((item) => item.task),
+      runs: [], modelInvocations: [], toolEffects: [], runArtifacts: [], runAnnotations: [],
+      resultSelections: [], capabilityObservations: [],
+    };
+    const preview = buildMechanismPrototypeExplorationCampaignPreview({
+      lenses: projection.lenses,
+      execution,
+      capability: {
+        schemaVersion: "pmh.execution-capability.v1", executionProfileId: profile.executionProfileId,
+        runtimeKind: "CODEX", credentialKind: "CODEX_OAUTH",
+        accessDriver: "CODEX_RESPONSES", model: "gpt-5.6-terra",
+        configured: true, credentialPresent: true, dispatchEligibility: "ELIGIBLE",
+        diagnostic: "ready", observedAt: NOW, authority: "EXECUTION_CAPABILITY_ONLY",
+        secretMaterialRetained: false, externalWriteAuthority: false,
+        valueMovingAuthority: false,
+      },
+    });
+    expect(preview).toMatchObject({
+      taskIds: [expect.stringMatching(/^sha256:/u)], lensIds: [expect.stringMatching(/^sha256:/u)],
+      taskRunPolicy: "ONCE_PER_TASK_PER_LINEAGE", creationEligible: true,
+      dispatchEligible: false, automaticDispatch: false, providerRequestsStarted: 0,
+      modelInvocationsStarted: 0,
+    });
+    const selectedLens = projection.lenses.find((item) =>
+      item.task.taskId === preview.taskIds[0]
+    )!;
+    expect(preview.selectionBinding.taskBindings[0]).toMatchObject({
+      inputRevisionId: selectedLens.currentInputRevision.inputRevisionId,
+      semanticInputIdentity: selectedLens.currentInputRevision.semanticInputIdentity,
+      exactInputHash: hashCanonical(selectedLens.currentInputRevision),
+    });
+  });
+
+  it("resolves the campaign-retained input after the live corpus revision rotates", () => {
+    const { sourceInput, prototype } = acceptedPrototype();
+    const oldCorpus = corpus(1);
+    const currentCorpus = corpus(2);
+    const oldProjection = materializeMechanismPrototypeExplorationProjection({
+      prototypes: [prototype], prototypeInputs: [sourceInput], corpus: oldCorpus,
+      ontology: buildMarketOntologySnapshot(oldCorpus),
+    });
+    const currentProjection = materializeMechanismPrototypeExplorationProjection({
+      prototypes: [prototype], prototypeInputs: [sourceInput], corpus: currentCorpus,
+      ontology: buildMarketOntologySnapshot(currentCorpus),
+    });
+    const portfolio = buildDefaultAgentRuntimePortfolio(defaultAiRuntimeConfiguration(NOW));
+    const route = portfolio.workloadRoutes.find((item) =>
+      item.taskKind === "MECHANISM_PROTOTYPE_EXPLORATION"
+    )!;
+    const profile = portfolio.executionProfiles.find((item) =>
+      item.executionProfileId === route.executionProfileId
+    )!;
+    const preview = buildMechanismPrototypeExplorationCampaignPreview({
+      lenses: oldProjection.lenses,
+      execution: { ...portfolio, campaigns: [], tasks: oldProjection.lenses.map((item) => item.task),
+        runs: [], modelInvocations: [], toolEffects: [], runArtifacts: [], runAnnotations: [],
+        resultSelections: [], capabilityObservations: [] },
+      capability: {
+        schemaVersion: "pmh.execution-capability.v1", executionProfileId: profile.executionProfileId,
+        runtimeKind: "CODEX", credentialKind: "CODEX_OAUTH",
+        accessDriver: "CODEX_RESPONSES", model: "gpt-5.6-terra", configured: true,
+        credentialPresent: true, dispatchEligibility: "ELIGIBLE", diagnostic: "ready",
+        observedAt: NOW, authority: "EXECUTION_CAPABILITY_ONLY", secretMaterialRetained: false,
+        externalWriteAuthority: false, valueMovingAuthority: false,
+      },
+    });
+    const paused = buildPausedAgentCampaign({
+      campaignKey: preview.campaignKey, revision: 1, executionProfileId: profile.executionProfileId,
+      taskIds: preview.taskIds, schedule: preview.schedule, budget: preview.budget,
+      selectionBinding: preview.selectionBinding, taskRunPolicy: preview.taskRunPolicy,
+      createdAt: NOW,
+    });
+    const active = activateAgentCampaign(paused, "operator:exact-input-test", NOW);
+    const oldLens = oldProjection.lenses.find((item) => item.task.taskId === preview.taskIds[0])!;
+    const run = buildAgentRun({ task: oldLens.task, executionProfile: profile, runOrdinal: 1,
+      authorization: { kind: "CAMPAIGN", campaign: active, authorizedAt: NOW }, createdAt: NOW });
+    const resolved = resolveMechanismPrototypeExplorationCampaignInput({
+      taskId: oldLens.task.taskId, run, campaigns: [active],
+      currentLenses: currentProjection.lenses,
+      loadInput: (revisionId) => revisionId === oldLens.currentInputRevision.inputRevisionId
+        ? oldLens.currentInputRevision : null,
+    });
+    expect(resolved.inputRevisionId).toBe(oldLens.currentInputRevision.inputRevisionId);
+    expect(resolved.inputRevisionId).not.toBe(currentProjection.lenses.find((item) =>
+      item.lensId === oldLens.lensId
+    )!.currentInputRevision.inputRevisionId);
+  });
+});
+
+describe("mechanism-prototype exploration Agent tools", () => {
+  function runtimeFixture() {
+    const { sourceInput, prototype } = acceptedPrototype();
+    const snapshot = corpus();
+    const lens = materializeMechanismPrototypeExplorationProjection({
+      prototypes: [prototype], prototypeInputs: [sourceInput], corpus: snapshot,
+      ontology: buildMarketOntologySnapshot(snapshot),
+    }).lenses.find((item) => item.axis === "SURFACE_DOMAIN")!;
+    const runtime = buildAgentRuntimeDefinition({ kind: "CODEX", version: "test" });
+    const credential = buildCredentialBinding({
+      kind: "CODEX_OAUTH", logicalAccountRef: "test", resolverKind: "CODEX_AUTH_CACHE",
+      resolverRef: "test",
+    });
+    const model = buildModelProfile({
+      profileKey: "test", revision: 1, accessDriver: "CODEX_RESPONSES",
+      model: "gpt-5.6-terra", configuration: {
+        schemaVersion: "pmh.codex-model-configuration.v1",
+        reasoning: { effort: "high" }, responseStorage: false,
+      }, createdAt: NOW,
+    });
+    const profile = buildExecutionProfile({
+      profileKey: "test-exploration", revision: 1, runtimeDefinition: runtime,
+      credentialBinding: credential, modelProfile: model,
+      toolProtocol: MECHANISM_PROTOTYPE_EXPLORATION_TOOL_PROTOCOL,
+      runBudget: {
+        maximumModelInvocations: 8, maximumToolCalls: 24,
+        maximumWallClockMs: 300_000, maximumInputTokens: "200000",
+        maximumOutputTokens: "20000",
+      }, createdAt: NOW,
+    });
+    const run = buildAgentRun({
+      task: lens.task, executionProfile: profile, runOrdinal: 1,
+      authorization: { kind: "MANUAL", authorizationRef: "operator:test", authorizedAt: NOW },
+      createdAt: NOW,
+    });
+    return { lens, prototype, snapshot, profile, run };
+  }
+
+  it("searches and inspects before retaining an exact routing-only trailhead", async () => {
+    const { lens, prototype, snapshot, profile, run } = runtimeFixture();
+    const host = new MechanismPrototypeExplorationAgentToolHost(
+      lens.currentInputRevision, prototype, snapshot,
+    );
+    expect(host.resultToolNames(lens.task.requestedEffectProtocol)).toEqual([
+      "submit_mechanism_exploration_trailhead",
+      "record_mechanism_exploration_exhaustion",
+    ]);
+    const search = await host.execute({
+      task: lens.task, run, executionProfile: profile,
+      toolName: "search_mechanism_exploration_corpus",
+      input: {
+        patterns: ["Scuderia Ferrari"], syntax: "LITERAL", mode: "ANY",
+        fields: ["title"], venueIds: [], limit: 10,
+      },
+    });
+    expect(search).toMatchObject({ status: "ACCEPTED" });
+    await host.execute({
+      task: lens.task, run, executionProfile: profile,
+      toolName: "inspect_mechanism_exploration_listings",
+      input: { listingRefs: ["venue-sport:constructors", "venue-race:italy"] },
+    });
+    const retained = await host.execute({
+      task: lens.task, run, executionProfile: profile,
+      toolName: "submit_mechanism_exploration_trailhead",
+      input: {
+        listingRefs: ["venue-sport:constructors", "venue-race:italy"],
+        structuralAnalogy: "One race result may contribute points to an aggregate constructors championship.",
+        surfaceDifferences: ["sports points replace office membership"],
+        appliedTransferTests: [prototype.transferTests[0]],
+        activatedCounterScenarios: [], searchSignals: ["race", "constructors championship"],
+        noveltyAxisExplanation: "The surface domain changes from elections to motorsport.",
+        rationale: "The exact pair merits separate semantic mechanism research.",
+      },
+    });
+    expect(retained).toMatchObject({
+      status: "ACCEPTED",
+      output: { authority: "PROTOTYPE_GUIDED_TRAILHEAD_ROUTING_ONLY" },
+    });
+  });
+
+  it("rejects uninspected positives and empty-search exhaustion", async () => {
+    const { lens, prototype, snapshot, profile, run } = runtimeFixture();
+    const host = new MechanismPrototypeExplorationAgentToolHost(
+      lens.currentInputRevision, prototype, snapshot,
+    );
+    await expect(host.execute({
+      task: lens.task, run, executionProfile: profile,
+      toolName: "submit_mechanism_exploration_trailhead",
+      input: {
+        listingRefs: ["venue-sport:constructors", "venue-race:italy"],
+        structuralAnalogy: "Uninspected analogy.", surfaceDifferences: ["sports"],
+        appliedTransferTests: [prototype.transferTests[0]],
+        activatedCounterScenarios: [], searchSignals: ["sports"],
+        noveltyAxisExplanation: "Cross-domain.", rationale: "Not inspected.",
+      },
+    })).rejects.toThrow(/inspected/u);
+    await expect(host.execute({
+      task: lens.task, run, executionProfile: profile,
+      toolName: "record_mechanism_exploration_exhaustion",
+      input: {
+        inspectedListingRefs: ["venue-sport:constructors"],
+        searchedNeighborhoods: ["motorsport"],
+        failedTransferTests: [prototype.transferTests[0]],
+        activatedCounterScenarios: [], reason: "No exact analogy survived.",
+      },
+    })).rejects.toThrow(/inspected|search/u);
   });
 });
