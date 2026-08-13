@@ -125,6 +125,9 @@ export type MechanismPrototypeExplorationLens = Readonly<{
   taskContract: MechanismPrototypeExplorationTaskContract;
   trailheadIds: readonly Hash[];
   exhaustionIds: readonly Hash[];
+  retainedTrailheadIds: readonly Hash[];
+  retainedExhaustionIds: readonly Hash[];
+  retainedSemanticInputCount: number;
   state: "UNEXPLORED" | "TRAILHEAD_RECORDED" | "EXHAUSTED" | "MIXED_RESULTS";
   campaignEligible: boolean;
   automaticDispatch: false;
@@ -241,6 +244,9 @@ export type MechanismPrototypeExplorationProjection = Readonly<{
   attemptedLensCount: number;
   successfulLensCount: number;
   exhaustedLensCount: number;
+  currentSemanticAttemptedLensCount: number;
+  currentSemanticSuccessfulLensCount: number;
+  currentSemanticExhaustedLensCount: number;
   seededLensCount: number;
   zeroSeedLensCount: number;
   seedCount: number;
@@ -668,6 +674,20 @@ export function materializeMechanismPrototypeExplorationProjection(input: Readon
         item.lensId === lensId && item.prototypeId === prototype.prototypeId &&
         item.semanticInputIdentity === semanticInputIdentity
       ).map((item) => item.exhaustionId));
+      const retainedLensTrailheads = retainedTrailheads.filter((item) =>
+        item.lensId === lensId && item.prototypeId === prototype.prototypeId
+      );
+      const retainedLensExhaustions = retainedExhaustions.filter((item) =>
+        item.lensId === lensId && item.prototypeId === prototype.prototypeId
+      );
+      const retainedTrailheadIds = exactHashes(retainedLensTrailheads
+        .map((item) => item.trailheadId));
+      const retainedExhaustionIds = exactHashes(retainedLensExhaustions
+        .map((item) => item.exhaustionId));
+      const retainedSemanticInputCount = new Set([
+        ...retainedLensTrailheads.map((item) => item.semanticInputIdentity),
+        ...retainedLensExhaustions.map((item) => item.semanticInputIdentity),
+      ]).size;
       const state = matchedTrailheadIds.length > 0 && matchedExhaustionIds.length > 0
         ? "MIXED_RESULTS" as const
         : matchedTrailheadIds.length > 0 ? "TRAILHEAD_RECORDED" as const
@@ -685,6 +705,9 @@ export function materializeMechanismPrototypeExplorationProjection(input: Readon
         taskContract: contract,
         trailheadIds: matchedTrailheadIds,
         exhaustionIds: matchedExhaustionIds,
+        retainedTrailheadIds,
+        retainedExhaustionIds,
+        retainedSemanticInputCount,
         state,
         campaignEligible: state === "UNEXPLORED",
         automaticDispatch: false as const,
@@ -728,11 +751,18 @@ export function materializeMechanismPrototypeExplorationProjection(input: Readon
     prototypeCount: prototypes.length,
     lensCount: lenses.length,
     eligibleLensCount: lenses.filter((item) => item.campaignEligible).length,
-    attemptedLensCount: lenses.filter((item) => item.state !== "UNEXPLORED").length,
-    successfulLensCount: lenses.filter((item) =>
+    attemptedLensCount: lenses.filter((item) =>
+      item.retainedTrailheadIds.length > 0 || item.retainedExhaustionIds.length > 0
+    ).length,
+    successfulLensCount: lenses.filter((item) => item.retainedTrailheadIds.length > 0).length,
+    exhaustedLensCount: lenses.filter((item) => item.retainedExhaustionIds.length > 0).length,
+    currentSemanticAttemptedLensCount: lenses.filter((item) =>
+      item.state !== "UNEXPLORED"
+    ).length,
+    currentSemanticSuccessfulLensCount: lenses.filter((item) =>
       item.state === "TRAILHEAD_RECORDED" || item.state === "MIXED_RESULTS"
     ).length,
-    exhaustedLensCount: lenses.filter((item) =>
+    currentSemanticExhaustedLensCount: lenses.filter((item) =>
       item.state === "EXHAUSTED" || item.state === "MIXED_RESULTS"
     ).length,
     seededLensCount: lenses.filter((item) =>

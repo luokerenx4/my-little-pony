@@ -113,7 +113,7 @@ repurchase the same research.
   candidate, one concurrent run, and explicit request/token/time ceilings.
 - [x] Expose the prototype → exploration lens → trailhead/exhaustion chain and
   separate prototype-authoring versus exploration cost in Studio.
-- [ ] Qualify one Terra/high specimen and pause immediately after its terminal
+- [x] Qualify one Terra/high specimen and pause immediately after its terminal
   observation.
 - [ ] Compare a discovered route's family/taxonomy distance or the retained
   exhaustion against the two source members, then choose `ADOPT`,
@@ -138,6 +138,27 @@ campaign. Read qualification over the live corpus reports four eligible lenses,
 one seed and three zero-seed frontiers with no provider or model call. Visual
 qualification at the live Studio port shows a coherent two-column exploration
 desk without console errors.
+
+The first Terra/high specimen selected the seeded
+`COUNTEREXAMPLE_FRONTIER`, completed in 142 seconds, and was immediately
+paused. Six successful model invocations used 133,346 input, 1,550 output and
+481 reasoning tokens. The Agent read the lens, ran two exact-corpus searches,
+inspected the New Hampshire Republican Senate-winner and U.S. House Republican
+control contracts, and retained a bounded exhaustion: the pair crosses Senate
+and House institutions and therefore defeats shared-chamber transfer rather
+than instantiating the prototype. Its first terminal attempt invented a transfer
+test and was rejected by the first-party host; it repaired the exact test list
+in-session. The run created no trailhead, semantic decision, probability,
+certificate or execution action.
+
+Catalog rotation during the live turn exposed an accounting distinction that
+the first projection blurred. Lens history is now separate from current
+semantic-input state: the counterexample lens reports one historical bounded
+negative and one historically attempted semantic input, while a materially new
+corpus semantic identity may remain eligible. Usage remains attributed to the
+retained result even when the current input advances. This prevents both false
+freshness (forgetting paid research) and false closure (letting an old corpus
+exhaustion permanently stop a changed search space).
 
 ## Selection gates
 

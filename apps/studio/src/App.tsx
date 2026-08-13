@@ -790,6 +790,9 @@ type WorldStateMechanismProjection = Readonly<{
     attemptedLensCount: number;
     successfulLensCount: number;
     exhaustedLensCount: number;
+    currentSemanticAttemptedLensCount: number;
+    currentSemanticSuccessfulLensCount: number;
+    currentSemanticExhaustedLensCount: number;
     seededLensCount: number;
     zeroSeedLensCount: number;
     seedCount: number;
@@ -819,6 +822,9 @@ type WorldStateMechanismProjection = Readonly<{
       }>;
       trailheadIds: readonly string[];
       exhaustionIds: readonly string[];
+      retainedTrailheadIds: readonly string[];
+      retainedExhaustionIds: readonly string[];
+      retainedSemanticInputCount: number;
       state: "UNEXPLORED" | "TRAILHEAD_RECORDED" | "EXHAUSTED" | "MIXED_RESULTS";
       campaignEligible: boolean;
     }>>;
@@ -4531,7 +4537,7 @@ function AgentOperationsView() {
                   <div><strong>{worldStateMechanisms.mechanismPrototypeExploration.lensCount}</strong><span>search lenses</span></div>
                   <div><strong>{worldStateMechanisms.mechanismPrototypeExploration.seededLensCount}</strong><span>programmatic seeds</span></div>
                   <div><strong>{worldStateMechanisms.mechanismPrototypeExploration.zeroSeedLensCount}</strong><span>Agent-only frontiers</span></div>
-                  <div><strong>{worldStateMechanisms.mechanismPrototypeExploration.attemptedLensCount}</strong><span>attempted</span></div>
+                  <div><strong>{worldStateMechanisms.mechanismPrototypeExploration.attemptedLensCount}</strong><span>historically attempted</span></div>
                 </div>
                 <div className="mechanism-exploration-campaign">
                   <div>
@@ -4573,9 +4579,12 @@ function AgentOperationsView() {
                         </div>
                       )}
                       <div className="research-attention-facts">
-                        <span>{lens.trailheadIds.length} retained positives</span>
-                        <span>{lens.exhaustionIds.length} bounded negatives</span>
-                        <span>{lens.campaignEligible ? "eligible" : "covered"}</span>
+                        <span>{lens.retainedTrailheadIds.length} historical positives</span>
+                        <span>{lens.retainedExhaustionIds.length} historical negatives</span>
+                        <span>{lens.campaignEligible
+                          ? lens.retainedSemanticInputCount > 0
+                            ? "new semantic input eligible" : "first input eligible"
+                          : "current input covered"}</span>
                       </div>
                     </article>
                   ))}

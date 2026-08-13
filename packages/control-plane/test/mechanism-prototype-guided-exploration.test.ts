@@ -7,6 +7,7 @@ import {
   buildAgentRun,
   activateAgentCampaign,
   buildMechanismPrototypeExplorationCampaignPreview,
+  buildMechanismPrototypeExplorationExhaustion,
   buildPausedAgentCampaign,
   buildDefaultAgentRuntimePortfolio,
   defaultAiRuntimeConfiguration,
@@ -252,6 +253,81 @@ describe("mechanism-prototype-guided exploration substrate", () => {
       expect(firstLens.currentInputRevision.semanticInputIdentity)
         .toBe(secondLens.currentInputRevision.semanticInputIdentity);
     }
+  });
+
+  it("separates retained lens history from the current semantic-input state", async () => {
+    const { sourceInput, prototype } = acceptedPrototype();
+    const firstCorpus = corpus(1);
+    const first = materializeMechanismPrototypeExplorationProjection({
+      prototypes: [prototype], prototypeInputs: [sourceInput], corpus: firstCorpus,
+      ontology: buildMarketOntologySnapshot(firstCorpus),
+    });
+    const lens = first.lenses.find((item) => item.axis === "SURFACE_DOMAIN")!;
+    const runtime = buildAgentRuntimeDefinition({ kind: "CODEX", version: "test" });
+    const credential = buildCredentialBinding({ kind: "CODEX_OAUTH", logicalAccountRef: "test",
+      resolverKind: "CODEX_AUTH_CACHE", resolverRef: "test" });
+    const model = buildModelProfile({ profileKey: "test-history", revision: 1,
+      accessDriver: "CODEX_RESPONSES", model: "gpt-5.6-terra",
+      configuration: { schemaVersion: "pmh.codex-model-configuration.v1",
+        reasoning: { effort: "high" }, responseStorage: false }, createdAt: NOW });
+    const profile = buildExecutionProfile({ profileKey: "test-history", revision: 1,
+      runtimeDefinition: runtime, credentialBinding: credential, modelProfile: model,
+      toolProtocol: MECHANISM_PROTOTYPE_EXPLORATION_TOOL_PROTOCOL,
+      runBudget: { maximumModelInvocations: 8, maximumToolCalls: 24,
+        maximumWallClockMs: 300_000, maximumInputTokens: "200000",
+        maximumOutputTokens: "20000" }, createdAt: NOW });
+    const run = buildAgentRun({ task: lens.task, executionProfile: profile, runOrdinal: 1,
+      authorization: { kind: "MANUAL", authorizationRef: "operator:history", authorizedAt: NOW },
+      createdAt: NOW });
+    const host = new MechanismPrototypeExplorationAgentToolHost(
+      lens.currentInputRevision, prototype, firstCorpus,
+    );
+    const search = await host.execute({ task: lens.task, run, executionProfile: profile,
+      toolName: "search_mechanism_exploration_corpus", input: {
+        patterns: ["Scuderia Ferrari"], syntax: "LITERAL", mode: "ANY",
+        fields: ["title"], venueIds: [], limit: 10,
+      } });
+    await host.execute({ task: lens.task, run, executionProfile: profile,
+      toolName: "inspect_mechanism_exploration_listings",
+      input: { listingRefs: ["venue-sport:constructors"] } });
+    const exhaustion = buildMechanismPrototypeExplorationExhaustion({
+      researchInput: lens.currentInputRevision, prototype, corpus: firstCorpus,
+      sourceAgentRunId: run.runId,
+      inspectedListingRefs: new Set(["venue-sport:constructors"]),
+      inspectedListingRefsForResult: ["venue-sport:constructors"],
+      searchedResultIds: [(search.output as { resultIdentity: Hash }).resultIdentity],
+      searchedNeighborhoods: ["motorsport aggregate"],
+      failedTransferTests: [prototype.transferTests[0]], activatedCounterScenarios: [],
+      reason: "The inspected aggregate alone does not establish a component-to-aggregate pair.",
+      proposedAt: NOW,
+    });
+    const secondBase = corpus(2);
+    const secondCorpus = buildMarketCorpusSnapshot({
+      sourceSetIdentity: secondBase.sourceSetIdentity,
+      eligibleSourceCount: 5,
+      excludedSourceCount: 0,
+      listings: [...secondBase.listings, listing({
+        ref: "venue-cup:new-semantic-member", venue: "venue-cup",
+        title: "Will the new club win the continental cup?",
+        receivedAt: "2026-08-13T12:00:00.000Z",
+      })],
+    });
+    const rotated = materializeMechanismPrototypeExplorationProjection({
+      prototypes: [prototype], prototypeInputs: [sourceInput], corpus: secondCorpus,
+      ontology: buildMarketOntologySnapshot(secondCorpus),
+      exhaustions: [exhaustion],
+    });
+    const rotatedLens = rotated.lenses.find((item) => item.lensId === lens.lensId)!;
+    expect(search).toMatchObject({ status: "ACCEPTED" });
+    expect(rotatedLens).toMatchObject({
+      state: "UNEXPLORED", campaignEligible: true, exhaustionIds: [],
+      retainedSemanticInputCount: 1, retainedTrailheadIds: [],
+      retainedExhaustionIds: [expect.stringMatching(/^sha256:/u)],
+    });
+    expect(rotated).toMatchObject({
+      attemptedLensCount: 1, exhaustedLensCount: 1,
+      currentSemanticAttemptedLensCount: 0, currentSemanticExhaustedLensCount: 0,
+    });
   });
 
   it("fails closed when prototype source input lineage is unavailable", () => {
